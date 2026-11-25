@@ -92,7 +92,10 @@ final class FieldAtlasUITests: XCTestCase {
         for _ in 0..<4{if pause.isHittable{break};app.swipeDown()}
         tap(pause);XCTAssertEqual(pause.label,"Продолжить");capture("field-task-paused")
         tap(app.buttons["mission-finish"]);tap(app.buttons["Завершить и сохранить"])
-        XCTAssertTrue(app.staticTexts["Завершено"].firstMatch.waitForExistence(timeout:5))
+        // SwiftUI exposes LabeledContent as a combined label in the accessibility tree.
+        XCTAssertTrue(app.staticTexts["Состояние, Завершено"].firstMatch.waitForExistence(timeout:5))
+        XCTAssertTrue(app.staticTexts["Задание завершено. GPX, журнал и карточка результата сохранены."].exists)
+        capture("field-task-completed")
         tap(app.buttons["К работе"]);tap(app.buttons["workspace-objects"])
         XCTAssertTrue(app.buttons.matching(NSPredicate(format:"label CONTAINS %@","Контроль времени")).firstMatch.waitForExistence(timeout:5))
     }
