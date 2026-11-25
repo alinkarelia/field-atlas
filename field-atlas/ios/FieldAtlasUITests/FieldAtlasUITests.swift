@@ -75,4 +75,25 @@ final class FieldAtlasUITests: XCTestCase {
     func testSimulatorDoesNotPretendToHaveLiDAR(){
         create("interior","Проверка оборудования");tap(app.buttons["workspace-scan"]);let start=app.buttons["capture-start"];XCTAssertTrue(start.waitForExistence(timeout:10));XCTAssertFalse(start.isEnabled);capture("unsupported-lidar");tap(app.buttons["Закрыть"]);XCTAssertTrue(app.buttons["workspace-add"].waitForExistence(timeout:5))
     }
+    func testFieldAssistantNeedsAccountAndReturnsToWork(){
+        create("land","Помощник в поле");tap(app.buttons["workspace-tools"]);tap(app.buttons["Помощник x0"])
+        XCTAssertTrue(app.navigationBars["Помощник x0"].waitForExistence(timeout:10));capture("field-assistant-account")
+        let send=app.buttons["field-assistant-send"]
+        for _ in 0..<4{if send.isHittable{break};app.swipeUp()}
+        XCTAssertTrue(send.exists);XCTAssertFalse(send.isEnabled)
+        tap(app.buttons["К работе"]);XCTAssertTrue(app.buttons["workspace-add"].waitForExistence(timeout:5))
+    }
+    func testTimedFieldTaskPausesAndSavesReport(){
+        create("land","Замер задания");tap(app.buttons["workspace-missions"])
+        let title=app.textFields["mission-title"];tap(title);title.typeText("Контроль времени")
+        tap(app.buttons["mission-mode"]);tap(app.buttons["Замер времени"])
+        let start=app.buttons["mission-start"];if !start.isHittable{app.swipeUp()};tap(start)
+        let pause=app.buttons["mission-pause"]
+        for _ in 0..<4{if pause.isHittable{break};app.swipeDown()}
+        tap(pause);XCTAssertEqual(pause.label,"Продолжить");capture("field-task-paused")
+        tap(app.buttons["mission-finish"]);tap(app.buttons["Завершить и сохранить"])
+        XCTAssertTrue(app.staticTexts["Завершено"].firstMatch.waitForExistence(timeout:5))
+        tap(app.buttons["К работе"]);tap(app.buttons["workspace-objects"])
+        XCTAssertTrue(app.buttons.matching(NSPredicate(format:"label CONTAINS %@","Контроль времени")).firstMatch.waitForExistence(timeout:5))
+    }
 }

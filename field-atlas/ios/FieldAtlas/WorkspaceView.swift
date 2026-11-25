@@ -3,6 +3,7 @@ import FieldCore
 
 struct WorkspaceView:View {
     @EnvironmentObject var store:AppStore
+    @EnvironmentObject var missions:FieldMissionRecorder
     let project:FieldProject;let onBack:()->Void
     @StateObject private var location=LocationRecorder()
     @State private var editing:Observation?
@@ -21,6 +22,7 @@ struct WorkspaceView:View {
     @State private var centerRequest=UUID()
     @State private var showScanReview=false
     @State private var showAssistant=false
+    @State private var showMissions=false
     private var records:[Observation]{store.records(project.id)}
     private var objects:[Observation]{records.filter{!["boundary","road","path"].contains($0.kind)}}
     var body:some View{
@@ -31,10 +33,11 @@ struct WorkspaceView:View {
                 HStack(alignment:.top,spacing:12){Button(action:onBack){Image(systemName:"chevron.left").frame(width:48,height:48)}.accessibilityLabel("К проектам");VStack(alignment:.leading,spacing:4){Text(project.title).font(.headline);Text(project.type.title).font(.caption).foregroundStyle(.secondary)};Spacer();Button{showTransfer=true}label:{Image(systemName:"icloud.and.arrow.up").frame(width:48,height:48)}.accessibilityLabel("Передать")}.padding(12).background(.regularMaterial,in:RoundedRectangle(cornerRadius:18)).padding(16)
                 HStack{Spacer();VStack(spacing:10){Button{location.locate();centerRequest=UUID();notice=location.message}label:{Image(systemName:"location").frame(width:48,height:48).background(.white,in:RoundedRectangle(cornerRadius:12))}.accessibilityLabel("Моё положение");if store.state.origins[project.id] != nil{Button{showGeo.toggle()}label:{Image(systemName:showGeo ? "square.grid.3x3":"globe.europe.africa").frame(width:48,height:48).background(.white,in:RoundedRectangle(cornerRadius:12))}.accessibilityLabel("Переключить план")}}}.padding(.horizontal,16)
                 Spacer()
+                if missions.active{Button("● Записывается: "+(missions.selected?.title ?? "маршрут")){showMissions=true}.font(.footnote).padding(10).background(.white,in:Capsule())}
                 if let notice{Text(notice).font(.footnote).padding(12).background(.white,in:RoundedRectangle(cornerRadius:12)).padding(.horizontal)}
                 if let kind=trackKind{VStack(alignment:.leading,spacing:12){HStack{Text(kind=="boundary" ? "Граница" : kind=="road" ? "Дорога":"Тропинка").font(.headline);Spacer();Text("\(location.points.count) точек").font(.caption)};Text(location.message).font(.caption).foregroundStyle(.secondary);HStack{Button(location.paused ? "Продолжить":"Пауза"){location.pause()}.buttonStyle(.bordered);Button("Сохранить"){finishTrack()}.buttonStyle(.borderedProminent)};HStack{Button("Убрать точку"){location.undo()}.disabled(location.points.isEmpty);Button("Отменить обход",role:.destructive){confirmDiscard=true}.buttonStyle(.bordered)}}.padding(16).background(.white,in:RoundedRectangle(cornerRadius:18)).padding(.horizontal)}
                 HStack{Text("\(objects.count) объектов");Text("·");Button("Снятые участки: \(store.state.scans.filter{$0.projectId==project.id}.count)"){showScanReview=true}.accessibilityIdentifier("workspace-scans");Spacer()}.font(.caption).foregroundStyle(.secondary).padding(.horizontal,24).padding(.bottom,8)
-                HStack(spacing:0){dock(project.type.objectTitle,"plus"){createObject()}.accessibilityIdentifier("workspace-add");dock("Карта","point.topleft.down.curvedto.point.bottomright.up"){showGeo=false;showTools=true};dock("Снять","viewfinder"){showScan=true}.accessibilityIdentifier("workspace-scan");dock("Объекты","list.bullet"){showList=true}.accessibilityIdentifier("workspace-objects")}
+                HStack(spacing:0){dock(project.type.objectTitle,"plus"){createObject()}.accessibilityIdentifier("workspace-add");dock("Карта","point.topleft.down.curvedto.point.bottomright.up"){showGeo=false;showTools=true}.accessibilityIdentifier("workspace-tools");dock("Снять","viewfinder"){showScan=true}.accessibilityIdentifier("workspace-scan");dock("Задания","clock"){showMissions=true}.accessibilityIdentifier("workspace-missions");dock("Объекты","list.bullet"){showList=true}.accessibilityIdentifier("workspace-objects")}
                     .padding(6).background(Palette.green,in:RoundedRectangle(cornerRadius:20)).padding(.horizontal,16).padding(.bottom,12)
             }
         }.foregroundStyle(Palette.ink)
@@ -53,10 +56,12 @@ struct WorkspaceView:View {
         .fullScreenCover(isPresented:$showScanReview){ScanReviewScreen(project:project)}
         .sheet(isPresented:$showTransfer){TransferView(project:project)}
         .sheet(isPresented:$showAssistant){FieldAssistantView(project:project,context:"Тип работы: \(project.type.title). Карточек: \(records.count). Сохранённых секторов: \(store.state.scans.filter{$0.projectId==project.id}.count).")}
+        .sheet(isPresented:$showMissions){FieldMissionsView(project:project)}
         .fullScreenCover(isPresented:$showArchive){NavigationStack{ArchiveLinksView(project:project).toolbar{Button("Готово"){showArchive=false}}}}
         .fullScreenCover(isPresented:$showScan){CapturePreparationScreen(project:project)}
         .confirmationDialog("Добавить на карту",isPresented:$showTools,titleVisibility:.visible){
             Button("Помощник x0"){showAssistant=true}
+            Button("Полевые задания · маршрут и время"){showMissions=true}
             if project.type.outdoor{Button("Обойти границу"){beginTrack("boundary")};Button("Записать дорогу"){beginTrack("road")};Button("Записать тропинку"){beginTrack("path")};Button("Дерево"){marker="tree";notice="Укажите дерево на плане"};Button("Свалка"){marker="dump";notice="Укажите место на плане"}}
             Button("Препятствие"){marker="obstacle";notice="Укажите место препятствия"}
             if project.type == .cemetery{Button("Подозрительное углубление"){marker="anomaly";notice="Укажите место. Это отметка наблюдения, не подтверждение могилы."}}

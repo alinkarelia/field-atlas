@@ -34,6 +34,7 @@ targets:
         NSMotionUsageDescription: Барометр предлагает смену этажа. Номер этажа всегда подтверждается вручную.
         NSCameraUsageDescription: Камера нужна для съёмки объектов, надписей и LiDAR.
         NSLocationWhenInUseUsageDescription: Координаты нужны для записи границ, дорожек и положения объектов.
+        UIBackgroundModes: [location]
         NSPhotoLibraryUsageDescription: Выберите фотографию для карточки объекта.
         NSLocalNetworkUsageDescription: Подключение к локальному серверу для передачи материалов.
         NSAppTransportSecurity:

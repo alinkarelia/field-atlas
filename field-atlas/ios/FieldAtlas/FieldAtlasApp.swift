@@ -12,8 +12,10 @@ enum Palette {
     @StateObject private var account=WebsiteAccount()
     @StateObject private var siteTransfer=SiteTransfer()
     @StateObject private var workLocation=WebsiteWorkLocation()
+    @StateObject private var missions=FieldMissionRecorder()
     @Environment(\.scenePhase) private var phase
-    var body:some Scene{WindowGroup{ProjectHome().environmentObject(store).environmentObject(sync).environmentObject(account).environmentObject(siteTransfer).environmentObject(workLocation).tint(Palette.green).preferredColorScheme(.light)
+    var body:some Scene{WindowGroup{ProjectHome().environmentObject(store).environmentObject(sync).environmentObject(account).environmentObject(siteTransfer).environmentObject(workLocation).environmentObject(missions).tint(Palette.green).preferredColorScheme(.light)
+        .onAppear{missions.configure(store)}
         .onChange(of:phase){_,value in if value != .active{workLocation.stop(reason:"background");siteTransfer.cancel()}}
         .onChange(of:account.hasSavedLogin){_,value in if !value{workLocation.stop(reason:"logout");siteTransfer.cancel()}}
     }}

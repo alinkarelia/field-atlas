@@ -79,7 +79,7 @@ struct AtlasState: Codable {
     func setOrigin(_ origin: GeoOrigin,projectId: String) throws {var next=state;next.origins[projectId]=origin;try persist(next)}
     func assetURL(_ id: String) -> URL? { guard let a=state.assets.first(where:{$0.id==id}) else{return nil};return root.appendingPathComponent("assets").appendingPathComponent(a.filename) }
     @discardableResult func saveAsset(_ data: Data,projectId: String,mime: String,extension ext: String) throws -> AssetEntry {
-        guard state.projects.contains(where:{$0.id==projectId}),["jpg","png","json","bin","worldmap","usdz"].contains(ext) else {throw CocoaError(.validationMissingMandatoryProperty)}
+        guard state.projects.contains(where:{$0.id==projectId}),["jpg","png","json","bin","worldmap","usdz","gpx"].contains(ext) else {throw CocoaError(.validationMissingMandatoryProperty)}
         let id=UUID().uuidString,filename="\(id).\(ext)";let sha=SHA256.hash(data:data).map{String(format:"%02x",$0)}.joined()
         let a=AssetEntry(id:id,projectId:projectId,filename:filename,mime:mime,sha256:sha,size:data.count)
         try data.write(to:root.appendingPathComponent("assets").appendingPathComponent(filename),options:[.atomic,.completeFileProtectionUntilFirstUserAuthentication])

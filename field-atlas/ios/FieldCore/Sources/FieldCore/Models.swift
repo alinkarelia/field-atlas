@@ -31,6 +31,7 @@ public struct Observation: Codable, Identifiable, Equatable {
     public var measureLength: Double?; public var measureWidth: Double?; public var measureMethod="none"
     public var measuredArea:Double?;public var footprint:[[Double]]=[];public var measurementFrameId:String?
     public var roomPlan:RoomPlanDocument?;public var roomPlanSourceId:String?;public var roomPlanAssetId:String?;public var roomPlanStructureId:String?;public var roomPlanModelId:String?
+    public var fieldMissionID:String?;public var sourceAssetIDs:[String]?
     public var needsReview=false; public var origin: GeoOrigin?; public var serverVersion=0; public var localRevision=0; public var dirty=true
     public var createdAt=Date().timeIntervalSince1970*1000
     public init(projectId: String, kind: String) { self.projectId=projectId; self.kind=kind }
