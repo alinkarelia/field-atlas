@@ -2,7 +2,13 @@ import Foundation
 import SwiftUI
 import FieldCore
 
-struct UploadState: Decodable {var id:String;var size:Int;var offset:Int;var complete:Int}
+struct UploadState: Decodable {
+    var id:String;var size:Int;var offset:Int;var complete:Int
+    func validate(_ asset:AssetEntry, expectedOffset:Int?=nil)throws {
+        guard id==asset.id,size==asset.size,size>=0,(0...size).contains(offset),[0,1].contains(complete),
+              complete==0 || offset==size,expectedOffset==nil || offset==expectedOffset else {throw StaffAccountError.invalidResponse}
+    }
+}
 struct RecordAcknowledgement: Decodable {var id:String;var version:Int}
 struct ServerError: Decodable {var error:String}
 struct AssemblyResult: Decodable {struct Pending:Decodable{var id:String;var reason:String};var id:String;var projectId:String;var registered:[String];var pending:[Pending];var coverage:[CoverageCell]}
@@ -60,14 +66,18 @@ enum NetworkProblem: LocalizedError {
         guard let file=store.assetURL(asset.id) else{throw CocoaError(.fileReadNoSuchFile)}
         let body=try JSONSerialization.data(withJSONObject:["id":asset.id,"projectId":asset.projectId,"sha256":asset.sha256,"size":asset.size,"mime":asset.mime])
         var status:UploadState=try await request("/api/uploads",method:"POST",data:body)
+        try status.validate(asset)
         let handle=try FileHandle(forReadingFrom:file);defer{try? handle.close()}
         while status.offset<status.size{
             try Task.checkCancellation();try handle.seek(toOffset:UInt64(status.offset))
             guard let part=try handle.read(upToCount:min(1024*1024,status.size-status.offset)),!part.isEmpty else{throw CocoaError(.fileReadCorruptFile)}
+            let expected=status.offset+part.count
             status=try await request("/api/uploads/\(asset.id)",method:"PATCH",data:part,headers:["Content-Type":"application/octet-stream","Upload-Offset":String(status.offset)])
+            try status.validate(asset,expectedOffset:expected)
             progress=Double(status.offset)/Double(status.size)
         }
         let final:UploadState=try await request("/api/uploads/\(asset.id)/complete",method:"POST",data:Data("{}".utf8))
+        try final.validate(asset,expectedOffset:asset.size)
         guard final.complete==1 else{throw NetworkProblem.response(409,"Файл ещё не подтверждён")};try store.uploaded(asset.id)
     }
     private func assemblyKey(_ project:FieldProject)->String{"assembly-job:"+baseURL+":"+project.id}

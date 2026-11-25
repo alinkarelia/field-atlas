@@ -26,8 +26,8 @@ targets:
       path: FieldAtlas/Info.plist
       properties:
         CFBundleDisplayName: Полевой атлас
-        CFBundleShortVersionString: '0.4.1'
-        CFBundleVersion: '11'
+        CFBundleShortVersionString: '0.4.2'
+        CFBundleVersion: '12'
         CFBundleURLTypes:
           - CFBundleURLName: ru.archiverf.fieldatlas.oauth
             CFBundleURLSchemes: [archiverf-atlas]

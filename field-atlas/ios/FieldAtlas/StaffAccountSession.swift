@@ -90,6 +90,10 @@ struct StaffAccountCredentials: Codable, Sendable {
 }
 
 struct StaffRuntimeCredentials: Codable, Sendable {
+    struct RuntimeContext: Codable, Sendable {
+        struct Organization: Codable, Sendable { let id: String }
+        let organization: Organization
+    }
     let clientID: String
     let baseURL: String
     let accessToken: String
@@ -98,10 +102,11 @@ struct StaffRuntimeCredentials: Codable, Sendable {
     let expiresIn: Int
     let workspaceID: String
     let taskID: String
+    var context: RuntimeContext? = nil
     private enum CodingKeys: String, CodingKey {
         case clientID = "client_id", baseURL = "base_url", accessToken = "access_token"
         case tokenType = "token_type", expiresAt = "expires_at", expiresIn = "expires_in"
-        case workspaceID = "workspace_id", taskID = "task_id"
+        case workspaceID = "workspace_id", taskID = "task_id", context
     }
     var expiry: Date? { try? StaffIdentityPolicy.parseUTCDate(expiresAt) }
     func validated(accountExpiresAt: Date, taskID: String, now: Date = Date()) throws -> URL {

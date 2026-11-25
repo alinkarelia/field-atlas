@@ -15,6 +15,7 @@ struct ObservationWizard:View {
     @State private var showCamera=false
     @State private var showMeasure=false
     @State private var showReading=false
+    @State private var showAssistant=false
     @State private var showPlan=false
     @State private var machineText=""
     @State private var machineSourceHash=""
@@ -54,7 +55,8 @@ struct ObservationWizard:View {
                 if step==2{
                     Section(isGrave ? "Текст с плиты":"Описание"){
                         TextEditor(text:$draft.transcription).frame(minHeight:140).accessibilityLabel(isGrave ? "Текст с плиты":"Описание")
-                        if isGrave{Toggle("Нужно уточнить чтение",isOn:$draft.unreadable);Button("Распознать на устройстве"){Task{await readLocally()}};Button("Помощь x0"){guard save() else{return};machineText="";showReading=true;Task{await sync.recognize(draft,project:project,store:store)}}}
+                        if isGrave{Toggle("Нужно уточнить чтение",isOn:$draft.unreadable);Button("Распознать на устройстве"){Task{await readLocally()}};Button("Помощь x0"){guard save() else{return};showAssistant=true}.disabled(!draft.photos.contains(where:{$0.role=="inscription"}))}
+                        Button("Спросить x0 по работе"){showAssistant=true}}
                     }
                     if isGrave{Section("Люди, указанные на памятнике"){ForEach($draft.persons){$person in VStack(alignment:.leading,spacing:10){TextField("Имя",text:$person.name);TextField("Рождение — как на плите",text:$person.birth);TextField("Смерть — как на плите",text:$person.death);Button("Убрать человека из карточки",role:.destructive){draft.persons.removeAll{$0.id==person.id}}}.padding(.vertical,6)};Button("Добавить человека"){draft.persons.append(PersonReading())}}}
                 }
@@ -91,6 +93,10 @@ struct ObservationWizard:View {
         .fullScreenCover(isPresented:$showCamera){CameraPicker{image in showCamera=false;guard let image,let role=photoRole else{return};savePhoto(image,role:role)}}
         .fullScreenCover(isPresented:$showMeasure){CapturePreparationScreen(project:project,onMeasurement:{points,area,frame in draft.footprint=points;draft.measuredArea=area;draft.measurementFrameId=frame;draft.measureMethod="ar"})}
         .sheet(isPresented:$showReading){NavigationStack{ScrollView{VStack(alignment:.leading,spacing:18){Text(sync.message).foregroundStyle(.secondary);if !machineText.isEmpty{readingProposal(machineText,sourceHash:machineSourceHash)};if let job=sync.reading,job.recordId==draft.id{Text("Статус: \(job.state)").font(.caption);if let r=job.result,let source=r.originalSourceHash{readingProposal(r.text,sourceHash:source)};Button("Обновить результат"){Task{await sync.refreshReading()}}}}.padding(20)}.navigationTitle("Помощник чтения").toolbar{Button("Готово"){showReading=false}}}}
+        .sheet(isPresented:$showAssistant){FieldAssistantView(project:project,context:"Работа с карточкой типа \(draft.kind).",photo:isGrave ? draft.photos.first(where:{$0.role=="inscription"}):nil,onReading:{text,hash in
+            guard draft.photos.contains(where:{$0.role=="inscription" && $0.sha256==hash}) else{notice="Фото изменилось. Повторите чтение.";return}
+            draft.transcription=text;draft.unreadable=true;draft.needsReview=true;_ = save()
+        })}
     }
     private var rectangleArea:Double?{guard let l=draft.measureLength,let w=draft.measureWidth,l>0,w>0 else{return nil};return l*w}
     @discardableResult private func save()->Bool{

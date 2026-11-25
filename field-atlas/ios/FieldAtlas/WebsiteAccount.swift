@@ -134,6 +134,26 @@ enum WebsiteKeychainError: LocalizedError {
 
     func cancelSignIn() { browser.cancel() }
 
+    func accountToken() throws -> String {
+        guard let credentials else { throw StaffAccountError.accountExpired }
+        try credentials.validated()
+        return credentials.accessToken
+    }
+
+    func runtime(taskID: String) async throws -> StaffRuntimeCredentials {
+        guard let credentials, let task = context?.tasks.first(where: { $0.id == taskID }) else {
+            throw StaffAccountError.accountExpired
+        }
+        let attempt = generation
+        try credentials.validated()
+        let value = try await api.runtime(accountToken: credentials.accessToken, taskID: taskID,
+                                          shareWithTask: true, shareOriginals: true)
+        try requireCurrent(attempt)
+        _ = try value.validated(accountExpiresAt: credentials.expiry!, taskID: taskID)
+        guard task.expectedWorkspaceID == value.workspaceID else { throw StaffAccountError.invalidResponse }
+        return value
+    }
+
     func signOut() async {
         guard !busy else { return }
         busy = true; generation = UUID()
@@ -210,6 +230,7 @@ struct WebsiteAccountView: View {
                             .disabled(account.busy)
                     }
                 }
+                WebsiteWorkLocationSection()
                 Section {
                     Text("Окно входа принадлежит archiverf.ru. Приложение хранит защищённую сессию в Связке ключей iOS. Исходные материалы не отправляются при входе автоматически.")
                         .font(.footnote).foregroundStyle(.secondary)

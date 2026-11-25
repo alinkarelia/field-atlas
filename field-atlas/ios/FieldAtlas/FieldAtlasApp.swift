@@ -10,7 +10,13 @@ enum Palette {
     @StateObject private var store=AppStore()
     @StateObject private var sync=SyncClient()
     @StateObject private var account=WebsiteAccount()
-    var body:some Scene{WindowGroup{ProjectHome().environmentObject(store).environmentObject(sync).environmentObject(account).tint(Palette.green).preferredColorScheme(.light)}}
+    @StateObject private var siteTransfer=SiteTransfer()
+    @StateObject private var workLocation=WebsiteWorkLocation()
+    @Environment(\.scenePhase) private var phase
+    var body:some Scene{WindowGroup{ProjectHome().environmentObject(store).environmentObject(sync).environmentObject(account).environmentObject(siteTransfer).environmentObject(workLocation).tint(Palette.green).preferredColorScheme(.light)
+        .onChange(of:phase){_,value in if value != .active{workLocation.stop(reason:"background");siteTransfer.cancel()}}
+        .onChange(of:account.hasSavedLogin){_,value in if !value{workLocation.stop(reason:"logout");siteTransfer.cancel()}}
+    }}
 }
 struct ProjectHome:View {
     @EnvironmentObject var store:AppStore
@@ -58,10 +64,12 @@ struct TransferView:View {
     let project:FieldProject?
     var body:some View{
         NavigationStack{Form{
-            Section("Семейный архив"){Button("Учётная запись сайта"){showAccount=true};Text("Вход в сайт и передача в локальную песочницу настраиваются отдельно.").font(.footnote)}
-            Section("Сервер"){TextField("https://…",text:$serverURL).textInputAutocapitalization(.never).autocorrectionDisabled().keyboardType(.URL);Text("Настройка сервера не нужна для съёмки и локального сохранения. Публичный сервер должен поддерживать API проекта и HTTPS.").font(.footnote)}
+            Section("Семейный архив"){Button("Учётная запись сайта"){showAccount=true}}
+            WebsiteWorkLocationSection()
+            SiteTransferSection(project:project)
+            Section("Локальная песочница · дополнительно"){TextField("https://…",text:$serverURL).textInputAutocapitalization(.never).autocorrectionDisabled().keyboardType(.URL);Text("Для разработки и испытаний собственного сервера. Передача на сайт находится выше и не требует ввода адреса.").font(.footnote)}
             Section("На устройстве"){LabeledContent("Изменений карточек",value:String(store.state.outbox.count));LabeledContent("Файлов к отправке",value:String(store.state.assets.filter{!$0.uploaded}.count));Text(sync.message).font(.footnote);if sync.busy{ProgressView(value:sync.progress)}}
-            Section{Button("Передать материалы"){Task{await sync.synchronize(store)}}.disabled(sync.busy||serverURL.isEmpty);if let project{Button("Собрать фрагменты проекта"){Task{await sync.assemble(project:project,store:store)}}.disabled(sync.busy)}}
+            Section{Button("Передать в песочницу"){Task{await sync.synchronize(store)}}.disabled(sync.busy||serverURL.isEmpty);if let project{Button("Собрать фрагменты в песочнице"){Task{await sync.assemble(project:project,store:store)}}.disabled(sync.busy||serverURL.isEmpty)}}
             if let job=sync.assemblyJob,["queued","running","cancelling"].contains(job.state),job.projectId==project?.id{Section{Button("Остановить сборку"){Task{await sync.cancelAssembly()}}.disabled(job.state=="cancelling")}}
             if let a=sync.assembly,a.projectId==project?.id{Section("Результат сборки"){LabeledContent("Совмещено",value:String(a.registered.count));ForEach(a.pending,id:\.id){item in Text(item.reason).foregroundStyle(.orange)}}}
             if store.state.outbox.contains(where:{$0.state=="conflict"}){Section("Требуют проверки"){ForEach(store.state.outbox.filter{$0.state=="conflict"}){m in VStack(alignment:.leading){Text(m.record.title);Text(m.error ?? "Конфликт версии").font(.caption).foregroundStyle(.secondary)}}}}

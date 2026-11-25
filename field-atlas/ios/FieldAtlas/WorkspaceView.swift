@@ -20,6 +20,7 @@ struct WorkspaceView:View {
     @State private var confirmDiscard=false
     @State private var centerRequest=UUID()
     @State private var showScanReview=false
+    @State private var showAssistant=false
     private var records:[Observation]{store.records(project.id)}
     private var objects:[Observation]{records.filter{!["boundary","road","path"].contains($0.kind)}}
     var body:some View{
@@ -51,9 +52,11 @@ struct WorkspaceView:View {
         .fullScreenCover(isPresented:$showList){NavigationStack{List(objects){record in Button{showList=false;DispatchQueue.main.asyncAfter(deadline:.now()+0.3){editing=record}}label:{VStack(alignment:.leading,spacing:4){Text(record.title.isEmpty ? project.type.objectTitle:record.title);Text(record.status=="complete" ? "Собрано":"Черновик").font(.caption).foregroundStyle(.secondary)}}}.navigationTitle("Объекты проекта").toolbar{ToolbarItem(placement:.confirmationAction){Button("Готово"){showList=false}};if project.type == .cemetery{ToolbarItem(placement:.bottomBar){Button("Связи с архивом"){showList=false;DispatchQueue.main.asyncAfter(deadline:.now()+0.3){showArchive=true}}}}}}}
         .fullScreenCover(isPresented:$showScanReview){ScanReviewScreen(project:project)}
         .sheet(isPresented:$showTransfer){TransferView(project:project)}
+        .sheet(isPresented:$showAssistant){FieldAssistantView(project:project,context:"Тип работы: \(project.type.title). Карточек: \(records.count). Сохранённых секторов: \(store.state.scans.filter{$0.projectId==project.id}.count).")}
         .fullScreenCover(isPresented:$showArchive){NavigationStack{ArchiveLinksView(project:project).toolbar{Button("Готово"){showArchive=false}}}}
         .fullScreenCover(isPresented:$showScan){CapturePreparationScreen(project:project)}
         .confirmationDialog("Добавить на карту",isPresented:$showTools,titleVisibility:.visible){
+            Button("Помощник x0"){showAssistant=true}
             if project.type.outdoor{Button("Обойти границу"){beginTrack("boundary")};Button("Записать дорогу"){beginTrack("road")};Button("Записать тропинку"){beginTrack("path")};Button("Дерево"){marker="tree";notice="Укажите дерево на плане"};Button("Свалка"){marker="dump";notice="Укажите место на плане"}}
             Button("Препятствие"){marker="obstacle";notice="Укажите место препятствия"}
             if project.type == .cemetery{Button("Подозрительное углубление"){marker="anomaly";notice="Укажите место. Это отметка наблюдения, не подтверждение могилы."}}

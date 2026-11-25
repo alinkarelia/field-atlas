@@ -1,6 +1,9 @@
 import SwiftUI
 import RoomPlan
 import ARKit
+import SceneKit
+import AVFoundation
+import CoreImage
 import FieldCore
 
 @MainActor final class InteriorCaptureController:NSObject,ObservableObject,RoomCaptureViewDelegate,RoomCaptureSessionDelegate {
@@ -14,6 +17,12 @@ import FieldCore
     @Published var latest:RoomPlanDocument?
     @Published var savedCount=0
     @Published var error:String?
+    @Published var coverageVisible=true
+    @Published var torchOn=false
+    @Published var measureStart:SIMD3<Float>?
+    @Published var toolMessage="Наведите центр экрана на поверхность для замера"
+    private let measurementNode=SCNNode()
+    private var measureNumber=0
     private var store:AppStore?
     private var project:FieldProject?
     var selectedLevel=1
@@ -28,7 +37,52 @@ import FieldCore
     override init(){super.init();view.delegate=self;view.captureSession.delegate=self;view.isModelEnabled=true}
     required init?(coder:NSCoder){super.init();view.delegate=self;view.captureSession.delegate=self;view.isModelEnabled=true}
     func encode(with coder:NSCoder){}
-    func configure(store:AppStore,project:FieldProject){self.store=store;self.project=project;startRoom()}
+    func configure(store:AppStore,project:FieldProject){self.store=store;self.project=project;surfaceView.scene?.rootNode.addChildNode(measurementNode);startRoom()}
+    func toggleCoverage(){coverageVisible.toggle();surfaceView.surfaces.root.isHidden = !coverageVisible}
+    func toggleTorch(){
+        guard let device=AVCaptureDevice.default(.builtInWideAngleCamera,for:.video,position:.back),device.hasTorch,device.isTorchAvailable else{toolMessage="Фонарь недоступен на этом устройстве";return}
+        do{try device.lockForConfiguration();defer{device.unlockForConfiguration()};if torchOn{device.torchMode = .off}else{try device.setTorchModeOn(level:0.5)};torchOn.toggle()}catch{self.error=error.localizedDescription}
+    }
+    func stopTorch(){if torchOn{toggleTorch()}}
+    func addNote(_ text:String){
+        guard let store,let project,!text.trimmingCharacters(in:.whitespacesAndNewlines).isEmpty else{return}
+        do{var record=Observation(projectId:project.id,kind:"object");record.title="Заметка помещения";record.comments=String(text.prefix(4000));record.measurementFrameId=frameId;try store.save(record);toolMessage="Заметка сохранена в объектах проекта"}catch{self.error=error.localizedDescription}
+    }
+    func takePhoto(){
+        guard scanning,let frame=view.captureSession.arSession.currentFrame,let store,let project else{return}
+        let orientation=view.window?.windowScene?.interfaceOrientation ?? .portrait
+        let image=CIImage(cvPixelBuffer:frame.capturedImage).oriented(orientation == .portrait ? .right:orientation == .portraitUpsideDown ? .left:orientation == .landscapeLeft ? .down:.up)
+        do{guard let color=CGColorSpace(name:CGColorSpace.sRGB),let jpeg=CIContext().jpegRepresentation(of:image,colorSpace:color,options:[:]) else{throw CocoaError(.fileWriteUnknown)}
+            let asset=try store.saveAsset(jpeg,projectId:project.id,mime:"image/jpeg",extension:"jpg")
+            var record=Observation(projectId:project.id,kind:"object");record.title="Фото помещения";record.measurementFrameId=frameId
+            record.photos=[PhotoAttachment(id:asset.id,role:"overview",sha256:asset.sha256,name:"Снимок во время обмера")]
+            try store.save(record);toolMessage="Фотография сохранена в объектах проекта"
+        }catch{self.error=error.localizedDescription}
+    }
+    func clearMeasure(){measureStart=nil;toolMessage="Первая точка отменена"}
+    func measurePoint(){
+        guard scanning,let frame=view.captureSession.arSession.currentFrame else{return}
+        guard case .normal = frame.camera.trackingState else{toolMessage="Дождитесь устойчивого отслеживания камеры";return}
+        let t=frame.camera.transform,origin=SIMD3<Float>(t.columns.3.x,t.columns.3.y,t.columns.3.z),direction = -SIMD3<Float>(t.columns.2.x,t.columns.2.y,t.columns.2.z)
+        let query=ARRaycastQuery(origin:origin,direction:direction,allowing:.estimatedPlane,alignment:.any)
+        guard let hit=view.captureSession.arSession.raycast(query).first else{toolMessage="Поверхность не найдена. Осмотрите её с другого ракурса.";return}
+        let p=hit.worldTransform.columns.3,end=SIMD3<Float>(p.x,p.y,p.z)
+        guard simd_distance(origin,end)<=8 else{toolMessage="Подойдите ближе к точке замера";return}
+        guard let start=measureStart else{measureStart=end;toolMessage="Первая точка выбрана. Наведите центр на вторую.";return}
+        let distance=Double(simd_distance(start,end))
+        guard distance>=0.05,distance<=30,let store,let project else{toolMessage="Слишком короткий или длинный размер. Выберите вторую точку ещё раз.";return}
+        do{var record=Observation(projectId:project.id,kind:"object");record.title="Контрольный размер \(measureNumber+1)";record.measureLength=distance;record.measureMethod="ar";record.measurementFrameId=frameId;record.needsReview=true
+            record.footprint=[[Double(start.x),Double(start.z),Double(start.y)],[Double(end.x),Double(end.z),Double(end.y)]]
+            record.comments="Прямое расстояние между двумя указанными точками AR. Проверьте контрольным замером."
+            try store.save(record);measureNumber+=1;measureStart=nil
+            let material=SCNMaterial();material.diffuse.contents=UIColor.systemCyan;material.lightingModel = .constant
+            let geometry=SCNGeometry(sources:[SCNGeometrySource(vertices:[SCNVector3(start.x,start.y,start.z),SCNVector3(end.x,end.y,end.z)])],elements:[SCNGeometryElement(indices:[UInt32(0),UInt32(1)],primitiveType:.line)]);geometry.materials=[material]
+            measurementNode.addChildNode(SCNNode(geometry:geometry))
+            let label=SCNText(string:String(format:"№%d · %.2f м",measureNumber,distance),extrusionDepth:0);label.font=UIFont.systemFont(ofSize:1,weight:.semibold);label.materials=[material]
+            let node=SCNNode(geometry:label);node.scale=SCNVector3(0.035,0.035,0.035);node.simdPosition=(start+end)/2;node.constraints=[SCNBillboardConstraint()];measurementNode.addChildNode(node)
+            toolMessage=String(format:"Размер №%d: %.2f м · сохранён",measureNumber,distance)
+        }catch{self.error=error.localizedDescription}
+    }
     func startRoom(){guard supported,!processing,unsaved==nil else{return};if let root=store?.root,let reason=DeviceReadiness.stopReason(free:DeviceReadiness.freeSpace(root),thermal:ProcessInfo.processInfo.thermalState){message=reason;return};if newGroupOnResume{frameId=UUID().uuidString;captured=[];savedCount=0;latest=nil;newGroupOnResume=false};surfaceView.surfaces.reset();liveWalls=0;liveOpenings=0;var config=RoomCaptureSession.Configuration();config.isCoachingEnabled=true;view.captureSession.run(configuration:config);scanning=true;message="Снимите все стены, затем окна и проходы. Следуйте подсказкам камеры."}
     nonisolated func captureSession(_ session:RoomCaptureSession,didUpdate room:CapturedRoom){Task{@MainActor [weak self] in self?.showProgress(room)}}
     private func showProgress(_ room:CapturedRoom){
@@ -52,8 +106,8 @@ import FieldCore
     nonisolated func captureSession(_ session:RoomCaptureSession,didEndWith data:CapturedRoomData,error:Error?){
         if let error{Task{@MainActor [weak self] in self?.scanning=false;self?.processing=false;self?.error="Съёмка остановлена: \(error.localizedDescription). Сохранённые комнаты доступны."}}
     }
-    func finishRoom(){guard scanning else{return};processingLevel=selectedLevel;scanning=false;processing=true;message="Строим план и сохраняем исходные измерения…";view.captureSession.stop(pauseARSession:false)}
-    func pause(){if scanning{finishRoom()};view.captureSession.arSession.pause();newGroupOnResume=true}
+    func finishRoom(){guard scanning else{return};stopTorch();measureStart=nil;processingLevel=selectedLevel;scanning=false;processing=true;message="Строим план и сохраняем исходные измерения…";view.captureSession.stop(pauseARSession:false)}
+    func pause(){stopTorch();if scanning{finishRoom()};view.captureSession.arSession.pause();newGroupOnResume=true;measurementNode.childNodes.forEach{$0.removeFromParentNode()}}
     nonisolated func captureView(shouldPresent roomDataForProcessing:CapturedRoomData,error:Error?)->Bool{
         if let error{Task{@MainActor [weak self] in self?.processing=false;self?.error=error.localizedDescription};return false};return true
     }
@@ -154,16 +208,32 @@ struct InteriorCaptureScreen:View {
     @State private var editFloor=false
     @State private var floorChoice=1
     @StateObject private var floorAdvisor=FloorAdvisor()
+    @State private var showNote=false
+    @State private var note=""
+    @State private var showAssistant=false
+    @Environment(\.verticalSizeClass) private var sizeClass
     var body:some View{
         ZStack(alignment:.bottom){
             if controller.supported{InteriorCaptureCamera(controller:controller).ignoresSafeArea();RoomSurfaceCamera(controller:controller).ignoresSafeArea().allowsHitTesting(false)}
             else{ContentUnavailableView("Съёмка помещения недоступна",systemImage:"viewfinder",description:Text("Нужен совместимый iPhone/iPad с LiDAR."))}
+            if controller.scanning{Image(systemName:"plus").font(.title2).foregroundStyle(.white).shadow(radius:2).frame(maxWidth:.infinity,maxHeight:.infinity).allowsHitTesting(false)}
             VStack(spacing:8){
                 if controller.scanning{Text("Стены: \(controller.liveWalls) · Проёмы: \(controller.liveOpenings)").font(.caption.monospacedDigit()).accessibilityIdentifier("room-live-progress")}
                 HStack{Button("Этаж \(floorAdvisor.estimate.level) · изменить"){floorChoice=floorAdvisor.estimate.level;editFloor=true};Spacer();if let proposed=floorAdvisor.estimate.proposal{Button("Возможно, этаж \(proposed)"){floorChoice=proposed;editFloor=true}.tint(.orange)}}.font(.caption)
                 Text(controller.message).font(.callout).frame(maxWidth:.infinity,alignment:.leading)
                 if controller.processing{ProgressView("Обработка комнаты")}
-                if controller.scanning{Button("Завершить комнату"){controller.finishRoom()}.buttonStyle(.borderedProminent)}
+                if controller.scanning{
+                    Text(controller.toolMessage).font(.caption).frame(maxWidth:.infinity,alignment:.leading)
+                    HStack(spacing:8){
+                        tool(controller.measureStart == nil ? "Размер":"Точка 2","ruler"){controller.measurePoint()}
+                        tool("Фото","camera"){controller.takePhoto()}
+                        tool("Заметка","note.text"){note="";showNote=true}
+                        tool("x0","sparkles"){showAssistant=true}
+                    }
+                    HStack{Button(controller.coverageVisible ? "Скрыть штриховку":"Показать штриховку"){controller.toggleCoverage()};Spacer();Button(controller.torchOn ? "Фонарь выкл.":"Фонарь вкл."){controller.toggleTorch()}}.font(.caption).frame(minHeight:44)
+                    if controller.measureStart != nil{Button("Отменить первую точку"){controller.clearMeasure()}.font(.caption)}
+                    Button("Сохранить комнату / перерыв"){controller.finishRoom()}.buttonStyle(.borderedProminent)
+                }
                 else if !controller.processing{
                     if controller.latest == nil && !controller.hasUnsaved && controller.supported{Button("Начать комнату заново"){controller.startRoom()}.buttonStyle(.bordered)}
                     if controller.latest != nil{HStack{Button("План и размеры"){review=true};Button("Следующая комната"){controller.startRoom()}}.buttonStyle(.bordered);Button("Собрать план квартиры / дома"){Task{await controller.exportStructure()}}.buttonStyle(.bordered)}
@@ -171,15 +241,20 @@ struct InteriorCaptureScreen:View {
                     Button("Готово"){controller.pause();dismiss()}.buttonStyle(.borderedProminent).disabled(controller.hasUnsaved)
                 }
                 if !controller.scanning{Text("Размеры привязаны к стенам и проёмам. Потолок измеряется отдельно.").font(.caption).foregroundStyle(.secondary)}
-            }.padding(16).background(.regularMaterial,in:RoundedRectangle(cornerRadius:20)).padding(12)
+            }.padding(12).frame(maxWidth:sizeClass == .compact ? 360:520).background(.regularMaterial,in:RoundedRectangle(cornerRadius:20)).padding(12).frame(maxWidth:.infinity,alignment:sizeClass == .compact ? .trailing:.center)
         }.onAppear{controller.configure(store:store,project:project)}.onDisappear{controller.pause();floorAdvisor.stop()}
         .onChange(of:phase){_,value in if value != .active{controller.pause();floorAdvisor.stop()}}
         .onChange(of:health.stopReason){_,reason in if let reason,controller.scanning{controller.finishRoom();controller.message=reason}}
+        .alert("Заметка помещения",isPresented:$showNote){TextField("Что нужно зафиксировать?",text:$note);Button("Сохранить"){controller.addNote(note)};Button("Отмена",role:.cancel){}}
+        .sheet(isPresented:$showAssistant){FieldAssistantView(project:project,context:"Идёт съёмка помещения RoomPlan. Стен: \(controller.liveWalls), проёмов: \(controller.liveOpenings). Этаж: \(controller.selectedLevel). Подсказка сканера: \(controller.message)")}
         .fullScreenCover(isPresented:$review){if let doc=controller.latest{NativeRoomPlanReview(document:doc,onLevelChange:controller.changeLevel,project:project,onCeilingStart:controller.pause,onCeilingChange:controller.changeCeiling)}}
         .sheet(isPresented:$editFloor){NavigationStack{Form{
             Section("Этаж текущей / следующей комнаты"){Stepper("Этаж \(floorChoice)",value:$floorChoice,in:-20...200);Text("Можно указать отрицательный уровень или 0 для цоколя. Сохранённые комнаты редактируются в их плане.").font(.footnote)}
             Section("Подсказка по высоте"){Text(floorAdvisor.message);Text("Изменение давления — только подсказка. Перепад высоты не определяет этаж точно.").font(.footnote);Button(floorAdvisor.active ? "Выключить подсказки":"Включить подсказки барометра"){if floorAdvisor.active{floorAdvisor.stop()}else{floorAdvisor.start()}}}
         }.navigationTitle("Выбор этажа").toolbar{ToolbarItem(placement:.cancellationAction){Button("Отмена"){editFloor=false}};ToolbarItem(placement:.confirmationAction){Button("Подтвердить"){floorAdvisor.confirm(floorChoice);controller.selectedLevel=floorChoice;editFloor=false}}}}}
         .alert("Проверка помещения",isPresented:Binding(get:{controller.error != nil},set:{if !$0{controller.error=nil}})){Button("Повторить сохранение"){controller.persistResult()};Button("Понятно"){controller.error=nil}}message:{Text(controller.error ?? "")}
+    }
+    private func tool(_ title:String,_ symbol:String,action:@escaping()->Void)->some View{
+        Button(action:action){VStack(spacing:4){Image(systemName:symbol);Text(title).font(.caption2)}.frame(maxWidth:.infinity,minHeight:44)}.buttonStyle(.bordered)
     }
 }
