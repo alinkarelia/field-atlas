@@ -1,0 +1,17 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {exampleRoomPlan,validateRoomPlan,roomArea,openingSegment,floorPlanSVG,wallElevationSVG,combineFloor,drawingWithCaption} from '../web/room-plan-core.js';
+test('RoomPlan example validates and has measured floor area',()=>{const p=exampleRoomPlan();assert.equal(validateRoomPlan(p),null);assert.ok(Math.abs(roomArea(p.rooms[0])-15.12)<1e-8);});
+test('Opening width is tied to its actual wall segment',()=>{const r=exampleRoomPlan().rooms[0],o=r.openings[0],s=openingSegment(r,o);assert.deepEqual(s[0],[.4,0]);assert.ok(Math.abs(s[1][0]-1.3)<1e-8);});
+test('Opening cannot silently cross room corner',()=>{const p=exampleRoomPlan();p.rooms[0].openings[0].width=9;assert.match(validateRoomPlan(p),/Проём/);});
+test('Orphan window is rejected instead of placed on nearest wall',()=>{const p=exampleRoomPlan();p.rooms[0].openings[1].wallId='missing';assert.match(validateRoomPlan(p),/Проём/);});
+test('Negative and nonfinite sizes are rejected',()=>{const p=exampleRoomPlan();p.rooms[0].walls[0].height=NaN;assert.ok(validateRoomPlan(p));});
+test('Unobserved floor is not manufactured from bounds',()=>{const r=exampleRoomPlan().rooms[0];delete r.floor;assert.equal(roomArea(r),null);});
+test('Skew wall drawing preserves endpoint rather than snapping square',()=>{const r=exampleRoomPlan().rooms[0];r.walls[0].end=[4.2,.5];const svg=floorPlanSVG(r,'w1');assert.match(svg,/x1="72" y1="288" x2="324" y2="258"/);});
+test('Floor self intersection rejected',()=>{const p=exampleRoomPlan();p.rooms[0].floor=[[0,0],[4,4],[0,4],[4,0]];assert.match(validateRoomPlan(p),/Контур пола/);});
+test('Dimensions include wall codes and units',()=>{const r=exampleRoomPlan().rooms[0],svg=floorPlanSVG(r,'w1');assert.match(svg,/С1/);assert.match(svg,/4,20 м/);assert.match(svg,/data-surface="w1"/);});
+test('Caption source text is escaped in SVG',()=>{const r=exampleRoomPlan().rooms[0];r.walls[0].code='<script>unsafe</script>';assert.ok(!floorPlanSVG(r).includes('<script>'));});
+test('Floors are separated by story',()=>{const p=exampleRoomPlan(),r=structuredClone(p.rooms[0]);r.id='upstairs';r.level=1;p.rooms.push(r);assert.equal(combineFloor(p.rooms,0).walls.length,4);});
+test('Wall elevation follows nonuniform top profile',()=>{const r=exampleRoomPlan().rooms[0];r.walls[0].profile=[[0,0],[4.2,0],[4.2,2],[0,2.7]];const svg=wallElevationSVG(r,r.walls[0]);assert.match(svg,/<polygon points="48,237 342,237 342,97 48,48"/);assert.match(svg,/Основание стены/);});
+test('Exported drawing itself distinguishes demonstration from measurements',()=>{const svg=drawingWithCaption(floorPlanSVG(exampleRoomPlan().rooms[0]),'Учебный пример — не результаты измерений');assert.match(svg,/Учебный пример/);assert.match(svg,/viewBox="0 0 396 408"/);});
+test('Broken height profile rejected before rendering',()=>{const p=exampleRoomPlan();p.rooms[0].walls[0].profile=[[0,0],[4.2,0],[4.2,9]];assert.match(validateRoomPlan(p),/контур высоты/);});

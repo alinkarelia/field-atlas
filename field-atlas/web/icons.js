@@ -1,0 +1,26 @@
+const paths={
+ map:'M3 5l6-2 6 2 6-2v16l-6 2-6-2-6 2V5zm6-2v16m6-14v16',
+ plus:'M12 5v14M5 12h14',minus:'M5 12h14',fit:'M8 3H3v5m13-5h5v5M3 16v5h5m13-5v5h-5',close:'M6 6l12 12M18 6L6 18',back:'M15 5l-7 7 7 7',chevron:'M9 5l7 7-7 7',
+ dump:'M5 7h14M8 7V4h8v3M6 7l1 14h10l1-14M10 11v6m4-6v6',obstacle:'M4 20V7h16v13M4 9l5 5m0-5l5 5m0-5l5 5M3 14h18',anomaly:'M3 9c3 0 3 9 9 9s6-9 9-9M3 5h18M12 8v5',entrance:'M4 21V3h12v18M9 12h13m-4-4l4 4-4 4',room:'M4 3h16v18H4V3zm0 8h9V3m0 8v10m0-10h7',facade:'M4 21V4h16v17M8 8h2m4 0h2M8 12h2m4 0h2M10 21v-5h4v5',
+ scan:'M8 3H3v5m13-5h5v5M3 16v5h5m13-5v5h-5M7 8l5-3 5 3v8l-5 3-5-3V8zm0 0l5 3 5-3m-5 3v8',
+ pin:'M19 10c0 5-7 11-7 11S5 15 5 10a7 7 0 1114 0zm-4 0a3 3 0 11-6 0 3 3 0 016 0z',
+ home:'M3 10l9-7 9 7M5 9v12h14V9m-10 12v-7h6v7',
+ interior:'M4 3h16v18H4V3zm0 8h9V3m0 8v4m0 3v3m0-10h7',
+ exterior:'M4 21V4h11v17M15 11h5v10M2 21h20M7 8h1m3 0h1M7 12h1m3 0h1M7 16h1m3 0h1',
+ land:'M3 17l4-9 5 5 5-10 4 14M3 21h18M5 4h2m-1-1v2',
+ cemetery:'M6 20V8a6 6 0 0112 0v12M3 21h18M9 10h6m-3-3v7',
+ tree:'M12 3L5 11h3l-4 6h16l-4-6h3L12 3zm0 14v4',
+ cloud:'M7 18a5 5 0 01-1-10 6 6 0 0111-2 5 5 0 012 12m-7 3V11m-3 3l3-3 3 3',
+ check:'M5 12l4 4L19 6',photo:'M3 7h4l2-3h6l2 3h4v13H3V7zm13 6a4 4 0 11-8 0 4 4 0 018 0z',
+ layers:'M12 3L2 8l10 5 10-5-10-5zM2 12l10 5 10-5M2 16l10 5 10-5',
+ target:'M12 2v3m0 14v3M2 12h3m14 0h3M19 12a7 7 0 11-14 0 7 7 0 0114 0zm-5 0a2 2 0 11-4 0 2 2 0 014 0z',
+ path:'M4 20l4-6-1-5 6-4 7 3M3 20h2M19 8h2',
+ road:'M8 3L4 21M16 3l4 18M12 4v3m0 4v3m0 4v3',
+ boundary:'M4 4h16v16H4V4zm-2 0h4M4 2v4m14-2h4m-2-2v4M2 20h4m-2-2v4m14-2h4m-2-2v4',
+ object:'M12 3L3 8v9l9 5 9-5V8l-9-5zm-9 5l9 5 9-5m-9 5v9',
+ warning:'M12 3L2 21h20L12 3zm0 6v5m0 3v1',info:'M12 11v6m0-10v1M22 12a10 10 0 11-20 0 10 10 0 0120 0z',
+ list:'M8 6h13M8 12h13M8 18h13M3 6h1m-1 6h1m-1 6h1',download:'M12 3v12m-5-5l5 5 5-5M3 16v5h18v-5',
+ pause:'M8 5v14M16 5v14',play:'M7 4l13 8-13 8V4z',undo:'M9 4L3 10l6 6M3 10h11a6 6 0 010 12',
+ book:'M3 4h7l2 2 2-2h7v16h-7l-2 2-2-2H3V4zm9 2v16',spark:'M12 3l2.5 6.5L21 12l-6.5 2.5L12 21l-2.5-6.5L3 12l6.5-2.5L12 3z'
+};
+export function icon(name){return `<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="${paths[name]||paths.object}"/></svg>`;}

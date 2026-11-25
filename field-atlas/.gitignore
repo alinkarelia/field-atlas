@@ -1,0 +1,13 @@
+.runtime/
+__pycache__/
+*.pyc
+.DS_Store
+DerivedData/
+*.xcodeproj/
+*.xcworkspace/
+node_modules/
+
+.build/
+build-device/
+build-simulator/
+artifacts/

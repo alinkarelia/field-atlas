@@ -1,0 +1,25 @@
+{
+  "name": "Полевой атлас — песочница",
+  "short_name": "Полевой атлас",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f4f6f2",
+  "theme_color": "#193c32",
+  "lang": "ru",
+  "id": "/",
+  "scope": "/",
+  "icons": [
+    {
+      "src": "app-icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "app-icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

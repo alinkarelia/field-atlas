@@ -1,0 +1,11 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {validateCeiling,ceilingStats,ceilingSVG} from '../web/ceiling.js';
+import {validateRoomPlan,exampleRoomPlan} from '../web/room-plan-core.js';
+const fixture=()=>({schema:'field-ceiling-v1',frameId:'separate-frame',method:'manual-corners',reviewed:true,floorPoint:[0,0,-1],points:[[0,0,1.7],[4,0,1.7],[4,3,2.2],[0,3,2.2]]});
+test('Sloping ceiling keeps individual elevations relative to selected floor',()=>{const c=fixture(),s=ceilingStats(c);assert.equal(validateCeiling(c),null);assert.equal(s.min,2.7);assert.equal(s.max,3.2);assert.equal(s.area,12);assert.ok(ceilingSVG(c).includes('ПТ3 · 3.20 м'));});
+test('Manual height requires its own source and valid range',()=>{const c={schema:'field-ceiling-v1',method:'manual-height',reviewed:true,manualHeight:2.7,source:'Лазерная рулетка, центр'};assert.equal(validateCeiling(c),null);c.source='';assert.ok(validateCeiling(c));c.source='Рулетка';c.manualHeight=-2;assert.ok(validateCeiling(c));});
+test('Unreviewed or self-intersecting ceiling not accepted',()=>{const c=fixture();c.reviewed=false;assert.ok(validateCeiling(c));c.reviewed=true;[c.points[1],c.points[2]]=[c.points[2],c.points[1]];assert.ok(validateCeiling(c));});
+test('AR plane proposal visibly preserves convex-hull limitation',()=>{const c=fixture();c.method='plane-proposal';assert.ok(ceilingSVG(c).includes('проёмы не исключены'));assert.ok(ceilingSVG(c).includes('stroke-dasharray'));});
+test('Flat height cannot replace sloped ceiling and synthetic capture cannot enter real plan',()=>{const p=exampleRoomPlan();p.synthetic=false;p.rooms[0].ceiling=fixture();assert.equal(validateRoomPlan(p),null);p.rooms[0].ceilingHeight=2.95;assert.ok(validateRoomPlan(p));p.rooms[0].ceilingHeight=null;p.rooms[0].ceiling.synthetic=true;assert.ok(validateRoomPlan(p));});
+test('Malformed ceiling history rejected before backup or rendering',()=>{const p=exampleRoomPlan();p.rooms[0].ceilingSourceHistory='not-an-array';assert.ok(validateRoomPlan(p));});

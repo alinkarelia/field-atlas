@@ -1,0 +1,66 @@
+import Foundation
+
+/// Clips a diagonal survey hatch to the actual wall outline, excluding openings.
+/// Coordinates are in metres in the surface's own XY plane.
+public enum SurfaceHatching {
+    public static func segments(outline: [[Double]], holes: [[[Double]]] = [], spacing: Double = 0.18) -> [[[Double]]] {
+        guard outline.count >= 3, outline.allSatisfy({ $0.count == 2 && $0.allSatisfy(\.isFinite) }),
+              spacing.isFinite, spacing > 0 else { return [] }
+        let polygons = [outline] + holes.filter { $0.count >= 3 && $0.allSatisfy { $0.count == 2 && $0.allSatisfy(\.isFinite) } }
+        let offsets = outline.map { $0[1] - $0[0] }
+        guard let low = offsets.min(), let high = offsets.max(), high-low < 1000 else { return [] }
+        let step = max(spacing, (high-low)/400)
+        func inside(_ p: [Double], _ polygon: [[Double]]) -> Bool {
+            var result = false
+            for i in polygon.indices {
+                let a=polygon[i], b=polygon[(i+1)%polygon.count]
+                if (a[1]>p[1]) != (b[1]>p[1]), p[0] < (b[0]-a[0])*(p[1]-a[1])/(b[1]-a[1])+a[0] { result.toggle() }
+            }
+            return result
+        }
+        var result: [[[Double]]] = []
+        for offset in stride(from: floor(low/step)*step, through: high, by: step) {
+            var intersections: [Double] = []
+            for polygon in polygons {
+                for i in polygon.indices {
+                    let a=polygon[i], b=polygon[(i+1)%polygon.count]
+                    let da=a[1]-a[0]-offset, db=b[1]-b[0]-offset
+                    guard abs(da-db)>1e-9 else { continue }
+                    let t=da/(da-db)
+                    if t >= 0 && t <= 1 { intersections.append(a[0]+t*(b[0]-a[0])) }
+                }
+            }
+            intersections.sort()
+            for i in intersections.indices.dropLast() {
+                let a=intersections[i], b=intersections[i+1], middle=(a+b)/2
+                guard b-a>0.002, inside([middle,middle+offset], outline),
+                      !polygons.dropFirst().contains(where: { inside([middle,middle+offset], $0) }) else { continue }
+                result.append([[a,a+offset],[b,b+offset]])
+            }
+        }
+        return result
+    }
+}
+
+/// A bounded, spatially distributed preview. It does not discard older sectors
+/// just because the newest chunk contains many repeated measurements.
+public struct SurfacePreview {
+    private var cells: [String: [Double]] = [:]
+    public private(set) var resolution: Double = 0.10
+    public let limit: Int
+    public init(limit: Int = 80000) { self.limit=max(32,limit) }
+    public var points: [[Double]] { Array(cells.values) }
+    public mutating func add(_ points: [[Double]]) {
+        for p in points where p.count == 4 && p.allSatisfy(\.isFinite) && p[3] >= 1 {
+            let key=p.prefix(3).map { String(floor($0/resolution)) }.joined(separator: ":")
+            if cells[key] == nil || p[3] > cells[key]![3] { cells[key]=p }
+        }
+        while cells.count > limit {
+            let previous=Array(cells.values); cells.removeAll(keepingCapacity:true); resolution *= 2
+            for p in previous {
+                let key=p.prefix(3).map { String(floor($0/resolution)) }.joined(separator: ":")
+                if cells[key] == nil || p[3] > cells[key]![3] { cells[key]=p }
+            }
+        }
+    }
+}

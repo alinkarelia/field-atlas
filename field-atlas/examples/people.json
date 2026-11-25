@@ -1,0 +1,9 @@
+{
+  "schema": "field-people-v1",
+  "source": "demo-archive",
+  "synthetic": true,
+  "people": [
+    {"id": "demo-person-1", "name": "Иванов Пётр Иванович", "birth": "1864", "death": "1901", "place": "Вымышленный пример", "url": ""},
+    {"id": "demo-person-2", "name": "Иванов Пётр Иванович", "birth": "1894", "death": "1955", "place": "Однофамилец — вымышленный пример", "url": ""}
+  ]
+}

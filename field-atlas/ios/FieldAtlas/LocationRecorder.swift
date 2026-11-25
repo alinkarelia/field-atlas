@@ -1,0 +1,48 @@
+import Foundation
+import CoreLocation
+import FieldCore
+
+struct TrackSnapshot:Codable {var kind:String;var points:[[Double]];var segments:[[[Double]]];var needsReview:Bool}
+
+@MainActor final class LocationRecorder: NSObject,ObservableObject,CLLocationManagerDelegate {
+    @Published var position: [Double]?; @Published var positionTime:Date?; @Published var accuracy: Double?; @Published var message="Положение не определено"
+    @Published var points: [[Double]]=[]; @Published var segments: [[[Double]]]=[]
+    @Published var recording=false; @Published var paused=false; @Published var needsReview=false
+    var trackChanged:(()->Void)?
+    var origin: GeoOrigin?;var originChanged: ((GeoOrigin)->Void)?
+    private let manager=CLLocationManager();private var last: CLLocation?;private var breakNext=false
+    override init(){super.init();manager.delegate=self;manager.desiredAccuracy=kCLLocationAccuracyBest;manager.distanceFilter=0.7}
+    func locate(){manager.requestWhenInUseAuthorization();manager.startUpdatingLocation()}
+    func restore(_ snapshot:TrackSnapshot){points=snapshot.points;segments=snapshot.segments;needsReview=snapshot.needsReview;paused=true;recording=true;breakNext=true;last=nil;message="Сохранённый обход · продолжите запись"}
+    func begin(){breakNext=false;points=[];segments=[[]];last=nil;needsReview=false;recording=true;paused=false;locate()}
+    func pause(){paused.toggle();if !paused{breakNext=true;needsReview=true;locate()};trackChanged?()}
+    var freshPosition:[Double]?{guard let time=positionTime,Date().timeIntervalSince(time)<30,let accuracy,accuracy<=20 else{return nil};return position}
+    func undo(){
+        guard !points.isEmpty else{return};points.removeLast()
+        while let tail=segments.last,tail.isEmpty{segments.removeLast()}
+        if !segments.isEmpty{segments[segments.count-1].removeLast()}
+        last=nil;trackChanged?()
+    }
+    func stop(){recording=false;manager.stopUpdatingLocation()}
+    func locationManagerDidChangeAuthorization(_ manager: CLLocationManager){
+        if manager.authorizationStatus == .denied || manager.authorizationStatus == .restricted{message="Геолокация запрещена. Место можно указать на плане."}
+    }
+    func locationManager(_ manager: CLLocationManager,didFailWithError error: Error){message="Координаты недоступны; запись сохранена"}
+    func locationManager(_ manager: CLLocationManager,didUpdateLocations locations: [CLLocation]){
+        guard let value=locations.last,value.horizontalAccuracy>=0,abs(value.timestamp.timeIntervalSinceNow)<10 else{return}
+        accuracy=value.horizontalAccuracy
+        if origin == nil && value.horizontalAccuracy<=20 {origin=GeoOrigin(lat:value.coordinate.latitude,lon:value.coordinate.longitude);originChanged?(origin!)}
+        guard let origin else{return};positionTime=value.timestamp;position=Geometry.local(lat:value.coordinate.latitude,lon:value.coordinate.longitude,origin:origin)
+        message="GPS ±\(Int(value.horizontalAccuracy)) м"
+        guard recording,!paused,let position else{return}
+        guard value.horizontalAccuracy<=12 else{needsReview=true;breakNext=true;trackChanged?();return}
+        if let previous=last,!breakNext {
+            let dt=value.timestamp.timeIntervalSince(previous.timestamp)
+            if dt<=0{return}
+            if value.distance(from:previous)/dt>6{needsReview=true;breakNext=true;message="Скачок GPS отклонён";last=value;trackChanged?();return}
+            if value.distance(from:previous)<0.7{return}
+        }
+        if breakNext{segments.append([]);breakNext=false}
+        if segments.isEmpty{segments=[[]]};segments[segments.count-1].append(position);points.append(position);last=value;trackChanged?()
+    }
+}

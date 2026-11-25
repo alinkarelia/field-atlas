@@ -1,0 +1,10 @@
+field-atlas/.runtime/
+field-atlas/reports/
+**/__pycache__/
+**/*.pyc
+**/.build/
+**/node_modules/
+**/build-*/
+**/artifacts/
+**/*.xcodeproj/
+**/*.xcworkspace/

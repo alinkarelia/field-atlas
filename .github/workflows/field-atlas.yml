@@ -1,0 +1,134 @@
+name: Field Atlas build and checks
+on:
+  push:
+    branches: [main]
+    paths: ['field-atlas/**', '.github/workflows/field-atlas.yml']
+  pull_request:
+    paths: ['field-atlas/**', '.github/workflows/field-atlas.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: field-atlas-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
+env:
+  PROJECT_DIR: field-atlas
+jobs:
+  sandbox:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Locate project
+        run: if [ ! -d field-atlas ]; then echo 'PROJECT_DIR=.' >> "$GITHUB_ENV"; fi
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install test dependencies
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: |
+          python -m pip install -r requirements.txt
+          npm install --prefix "$RUNNER_TEMP/field-browser" playwright@1.62.1
+          "$RUNNER_TEMP/field-browser/node_modules/.bin/playwright" install --with-deps chromium
+          echo "FIELD_PLAYWRIGHT_MODULE=$RUNNER_TEMP/field-browser/node_modules/playwright" >> "$GITHUB_ENV"
+          echo "FIELD_PYTHON=$(command -v python)" >> "$GITHUB_ENV"
+          node -e "console.log('FIELD_CHROME='+require('$RUNNER_TEMP/field-browser/node_modules/playwright').chromium.executablePath())" >> "$GITHUB_ENV"
+      - name: Test geometry and server
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: |
+          node --test tests/*.test.mjs
+          python -m unittest discover -s tests -p 'test_*.py' -v
+      - name: Exercise all browser workflows
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: |
+          node tests/browser.cjs
+          node tests/ui-audit.cjs
+          node tests/room-plan-browser.cjs
+          node tests/resilience-browser.cjs
+          node tests/fullscreen-ui.cjs
+          node tests/edge-ui.cjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: field-atlas-browser-reports
+          path: ${{ env.PROJECT_DIR }}/reports/
+          retention-days: 3
+  native:
+    strategy:
+      fail-fast: false
+      matrix:
+        family: [iPhone, iPad]
+    runs-on: macos-15
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - name: Locate project
+        run: if [ ! -d field-atlas ]; then echo 'PROJECT_DIR=.' >> "$GITHUB_ENV"; fi
+      - name: Check Apple toolchain
+        run: |
+          xcodebuild -version
+          swift --version
+      - name: Test shared native logic
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: swift test --package-path ios/FieldCore
+      - name: Install project generator
+        run: brew install xcodegen
+      - name: Generate project
+        working-directory: ${{ env.PROJECT_DIR }}/ios
+        run: xcodegen generate
+      - name: Build Simulator application
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: |
+          set -o pipefail
+          mkdir -p artifacts
+          xcodebuild -project ios/FieldAtlas.xcodeproj -scheme FieldAtlas -destination 'generic/platform=iOS Simulator' -derivedDataPath build-simulator CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual build 2>&1 | tee artifacts/simulator-build.log
+      - name: Exercise native iPhone and iPad interface
+        timeout-minutes: 25
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: |
+          set -o pipefail
+          failed=0
+          for family in ${{ matrix.family }}; do
+            device_id=$(python3 ios/select-simulator.py "$family")
+            xcrun simctl boot "$device_id" || true
+            python3 -c 'import subprocess,sys; subprocess.run(["xcrun","simctl","bootstatus",sys.argv[1],"-b"],check=True,timeout=240)' "$device_id"
+            xcodebuild -project ios/FieldAtlas.xcodeproj -scheme FieldAtlas -configuration Debug -destination "platform=iOS Simulator,id=$device_id" -destination-timeout 60 -derivedDataPath build-simulator -resultBundlePath "artifacts/ui-$family.xcresult" -parallel-testing-enabled NO -test-timeouts-enabled YES -default-test-execution-time-allowance 180 -maximum-test-execution-time-allowance 240 CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual ONLY_ACTIVE_ARCH=YES test 2>&1 | tee "artifacts/ui-$family.log" || failed=1
+            xcrun simctl shutdown "$device_id" || true
+          done
+          exit "$failed"
+      - name: Export native screenshots
+        if: always()
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: |
+          for family in ${{ matrix.family }}; do
+            if [ -d "artifacts/ui-$family.xcresult" ]; then
+              xcrun xcresulttool export attachments --path "artifacts/ui-$family.xcresult" --output-path "artifacts/screenshots-$family"
+            fi
+          done
+      - name: Build unsigned iPhone application
+        if: matrix.family == 'iPhone'
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: |
+          set -o pipefail
+          xcodebuild -project ios/FieldAtlas.xcodeproj -scheme FieldAtlas -configuration Release -destination 'generic/platform=iOS' -derivedDataPath build-device CODE_SIGNING_ALLOWED=NO build 2>&1 | tee artifacts/device-build.log
+          mkdir -p artifacts/Payload
+          ditto build-device/Build/Products/Release-iphoneos/FieldAtlas.app artifacts/Payload/FieldAtlas.app
+          cd artifacts
+          /usr/bin/zip -qry FieldAtlas-unsigned.ipa Payload
+          shasum -a 256 FieldAtlas-unsigned.ipa > FieldAtlas-unsigned.sha256
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: field-atlas-native-${{ matrix.family }}
+          path: |
+            ${{ env.PROJECT_DIR }}/artifacts/*.log
+            ${{ env.PROJECT_DIR }}/artifacts/*.ipa
+            ${{ env.PROJECT_DIR }}/artifacts/*.sha256
+            ${{ env.PROJECT_DIR }}/artifacts/*.xcresult
+            !${{ env.PROJECT_DIR }}/artifacts/*.xcresult/Staging/**
+            ${{ env.PROJECT_DIR }}/artifacts/screenshots-*/
+          if-no-files-found: ignore
+          retention-days: 3
