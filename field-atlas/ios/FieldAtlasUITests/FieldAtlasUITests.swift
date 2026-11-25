@@ -86,7 +86,8 @@ final class FieldAtlasUITests: XCTestCase {
     func testTimedFieldTaskPausesAndSavesReport(){
         create("land","Замер задания");tap(app.buttons["workspace-missions"])
         let title=app.textFields["mission-title"];tap(title);title.typeText("Контроль времени")
-        tap(app.buttons["mission-mode"]);tap(app.buttons["Замер времени"])
+        tap(app.buttons["mission-mode-timed"])
+        XCTAssertTrue(app.buttons["mission-mode-timed"].isSelected)
         let start=app.buttons["mission-start"];if !start.isHittable{app.swipeUp()};tap(start)
         let pause=app.buttons["mission-pause"]
         for _ in 0..<4{if pause.isHittable{break};app.swipeDown()}

@@ -160,6 +160,7 @@ struct FieldMissionsView: View {
     @State private var assignment=""
     @State private var note=""
     @State private var confirmFinish=false
+    @FocusState private var editing:Bool
     var body:some View {
         NavigationStack { Form {
             if let current=recorder.selected {
@@ -175,7 +176,7 @@ struct FieldMissionsView: View {
                     }
                     if recorder.summary.status != "completed" {
                         Button(recorder.active ? "Пауза":"Продолжить"){recorder.pauseOrResume()}.accessibilityIdentifier("mission-pause")
-                        TextField("Комментарий к контрольной точке",text:$note)
+                        TextField("Комментарий к контрольной точке",text:$note).focused($editing)
                         Button("Отметить контрольную точку"){recorder.checkpoint(note);note=""}
                         Button("Завершить задание"){confirmFinish=true}.accessibilityIdentifier("mission-finish")
                     } else { Button("Сохранить / повторить экспорт результата"){recorder.retryExport()} }
@@ -186,10 +187,21 @@ struct FieldMissionsView: View {
             }
             if recorder.storageReady && !recorder.index.contains(where:{$0.status != "completed"}) {
                 Section("Новое полевое задание") {
-                    TextField("Название задания",text:$title).accessibilityIdentifier("mission-title")
-                    Picker("Режим",selection:$mode){ForEach(TravelMode.allCases){Text($0.title).tag($0)}}.accessibilityIdentifier("mission-mode")
+                    TextField("Название задания",text:$title).focused($editing).accessibilityIdentifier("mission-title")
+                    HStack(spacing:8) {
+                        ForEach(TravelMode.allCases) { choice in
+                            Button { editing=false;mode=choice } label: {
+                                VStack(spacing:6) {
+                                    Image(systemName:choice == .walking ? "figure.walk":choice == .driving ? "car.fill":"stopwatch")
+                                    Text(choice == .walking ? "Пешком":choice == .driving ? "Машина":"Таймер").font(.caption).lineLimit(1)
+                                }.frame(maxWidth:.infinity,minHeight:44)
+                            }.buttonStyle(.bordered).tint(mode == choice ? Color.accentColor:Color.secondary)
+                                .accessibilityLabel(choice.title).accessibilityAddTraits(mode == choice ? .isSelected:[])
+                                .accessibilityIdentifier("mission-mode-"+choice.rawValue)
+                        }
+                    }
                     Picker("Связь с заданием сайта",selection:$assignment){Text("Локальное задание").tag("");ForEach(account.context?.tasks ?? []){Text($0.title).tag($0.id)}}
-                    Button("Начать задание"){recorder.create(project:project,title:title,mode:mode,assignment:assignment)}
+                    Button("Начать задание"){editing=false;recorder.create(project:project,title:title,mode:mode,assignment:assignment)}
                         .disabled(title.trimmingCharacters(in:.whitespacesAndNewlines).isEmpty).accessibilityIdentifier("mission-start")
                     Text("Для поездки запустите запись до движения. Пропуски GPS сохраняются как разрывы. В режиме замера времени GPS не используется.").font(.caption).foregroundStyle(.secondary)
                 }
@@ -199,8 +211,11 @@ struct FieldMissionsView: View {
                     Button{recorder.open(item.id)}label:{VStack(alignment:.leading){Text(item.title);Text(item.mode.title+" · "+(item.status=="completed" ? "Завершено":"Не завершено")).font(.caption)}}.disabled(!recorder.storageReady || recorder.active || recorder.index.contains(where:{$0.status != "completed" && $0.id != item.id}))
                 }
             }
-        }.navigationTitle("Полевые задания").navigationBarTitleDisplayMode(.inline)
-            .toolbar{ToolbarItem(placement:.confirmationAction){Button("К работе"){dismiss()}}}
+        }.scrollDismissesKeyboard(.interactively).navigationTitle("Полевые задания").navigationBarTitleDisplayMode(.inline)
+            .toolbar{
+                ToolbarItem(placement:.confirmationAction){Button("К работе"){dismiss()}}
+                ToolbarItemGroup(placement:.keyboard){Spacer();Button("Скрыть клавиатуру"){editing=false}}
+            }
             .confirmationDialog("Завершить запись и сохранить результат?",isPresented:$confirmFinish,titleVisibility:.visible){Button("Завершить и сохранить"){recorder.finish()};Button("Продолжать запись",role:.cancel){}}
         }.onAppear{recorder.configure(store)}
     }

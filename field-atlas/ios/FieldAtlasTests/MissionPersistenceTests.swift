@@ -6,6 +6,7 @@ final class MissionPersistenceTests:XCTestCase {
     @MainActor func testCorruptIndexCannotBeOverwrittenByStartingAnotherMission()throws {
         setenv("FIELD_ATLAS_TEST_SESSION",UUID().uuidString,1);defer{unsetenv("FIELD_ATLAS_TEST_SESSION")}
         let store=AppStore(),project=FieldProject(title:"Fixture",type:.land)
+        try store.addProject(project)
         let path=store.root.appendingPathComponent("mission-index.json"),original=Data("{interrupted".utf8)
         try original.write(to:path)
         let recorder=FieldMissionRecorder();recorder.configure(store)
@@ -17,6 +18,7 @@ final class MissionPersistenceTests:XCTestCase {
     @MainActor func testIncompleteJournalTailIsPreservedAndRecoveredBeforeResume()throws {
         setenv("FIELD_ATLAS_TEST_SESSION",UUID().uuidString,1);defer{unsetenv("FIELD_ATLAS_TEST_SESSION")}
         let store=AppStore(),project=FieldProject(title:"Fixture",type:.land)
+        try store.addProject(project)
         let first=FieldMissionRecorder();first.configure(store);first.create(project:project,title:"Route",mode:.timed,assignment:"")
         first.pauseOrResume()
         let id=try XCTUnwrap(first.selectedID),path=store.root.appendingPathComponent("mission-"+id+".jsonl")
@@ -27,15 +29,20 @@ final class MissionPersistenceTests:XCTestCase {
         let recovery=try XCTUnwrap(FileManager.default.contentsOfDirectory(at:store.root,includingPropertiesForKeys:nil).first{$0.lastPathComponent.hasPrefix(path.lastPathComponent+".recovery-")})
         XCTAssertEqual(try Data(contentsOf:recovery),tail)
         second.pauseOrResume();second.finish();XCTAssertEqual(second.summary.status,"completed")
+        XCTAssertTrue(second.storageReady,second.message)
         let third=FieldMissionRecorder();third.configure(store);third.open(id)
         XCTAssertTrue(third.storageReady);XCTAssertEqual(third.summary.status,"completed")
     }
     @MainActor func testPausedTaskCannotBeHiddenByOpeningAnOldCompletedTask()throws {
         setenv("FIELD_ATLAS_TEST_SESSION",UUID().uuidString,1);defer{unsetenv("FIELD_ATLAS_TEST_SESSION")}
         let store=AppStore(),project=FieldProject(title:"Fixture",type:.land)
+        try store.addProject(project)
         let recorder=FieldMissionRecorder();recorder.configure(store)
         recorder.create(project:project,title:"Old",mode:.timed,assignment:"");let old=try XCTUnwrap(recorder.selectedID);recorder.finish()
-        recorder.create(project:project,title:"Current",mode:.timed,assignment:"");let current=recorder.selectedID;recorder.pauseOrResume()
+        XCTAssertTrue(recorder.storageReady,recorder.message)
+        recorder.create(project:project,title:"Current",mode:.timed,assignment:"");let current=try XCTUnwrap(recorder.selectedID)
+        XCTAssertNotEqual(current,old);XCTAssertEqual(recorder.summary.status,"running")
+        recorder.pauseOrResume()
         recorder.open(old);XCTAssertEqual(recorder.selectedID,current);XCTAssertEqual(recorder.summary.status,"paused")
     }
     @MainActor func testTimedMissionSurvivesInterruptionAndExportsOriginals()throws {
