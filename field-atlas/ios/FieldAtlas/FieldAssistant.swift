@@ -49,7 +49,7 @@ struct FieldAssistantResult: Codable {
                 guard let http = response as? HTTPURLResponse, body.count <= 128 * 1024 else { throw StaffAccountError.invalidResponse }
                 guard http.statusCode == 200 else {
                     if http.statusCode == 409 { throw SiteTransferError.message("Предыдущий запрос ещё выполняется или прерван. Попробуйте проверить ответ позже; повторная обработка не запускается автоматически.") }
-                    if http.statusCode == 404 { throw SiteTransferError.message("Полевой помощник ещё не установлен на сервере сайта.") }
+                    if http.statusCode == 404 { throw SiteTransferError.message("Задание или запрос недоступны. Обновите вход и выберите действующее задание сайта.") }
                     if http.statusCode == 422 { throw SiteTransferError.message("Сайт не принял вопрос или снимок. Проверьте выбранное задание и размер фото.") }
                     throw StaffAccountError.http(http.statusCode)
                 }

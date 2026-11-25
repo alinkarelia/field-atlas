@@ -144,7 +144,7 @@ enum SiteTransferError: LocalizedError {
             ledger.complete.append(asset.id.lowercased()); try persist(ledger, at: ledgerURL)
             progress = Double(index + 1) / Double(queue.count)
         }
-        message = "Сайт принял \(queue.count) файлов и снимок карточек. Они доступны в материалах выбранного задания."
+        message = "Принято исходников: \(assets.count). Снимок карточек также сохранён в материалах выбранного задания."
         progress = 1
     }
 
