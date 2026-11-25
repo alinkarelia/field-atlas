@@ -18,7 +18,13 @@ struct CaptureScreen:View {
             else{ContentUnavailableView("LiDAR недоступен",systemImage:"viewfinder",description:Text("Откройте съёмку на совместимом iPhone или iPad. Карта и карточки работают независимо." )).foregroundStyle(.white)}
             Image(systemName:"plus").font(.title2.weight(.light)).foregroundStyle(.white).shadow(color:.black,radius:2)
             VStack{
-                HStack(alignment:.top){VStack(alignment:.leading,spacing:5){Text(project.title).font(.caption);Text(onMeasurement == nil ? "Съёмка участка":"Контур участка").font(.headline)};Spacer();Button{closeCapture()}label:{Image(systemName:"xmark").frame(width:44,height:44).background(.black.opacity(0.5),in:Circle())}.accessibilityLabel("Завершить и вернуться")}.padding(16)
+                HStack(alignment:.top){
+                    VStack(alignment:.leading,spacing:5){Text(project.title).font(.caption);Text(onMeasurement == nil ? "Съёмка участка":"Контур участка").font(.headline)}
+                    Spacer()
+                    Button{controller.toggleTorch()}label:{Image(systemName:controller.torchOn ? "flashlight.on.fill":"flashlight.off.fill").frame(width:44,height:44).background(.black.opacity(0.5),in:Circle()).foregroundStyle(controller.torchOn ? .yellow:.white)}
+                        .accessibilityLabel(controller.torchOn ? "Выключить фонарь":"Включить фонарь").accessibilityIdentifier("capture-torch")
+                    Button{closeCapture()}label:{Image(systemName:"xmark").frame(width:44,height:44).background(.black.opacity(0.5),in:Circle())}.accessibilityLabel("Завершить и вернуться")
+                }.padding(16)
                 HStack{Text(controller.status).font(.caption).padding(10).background(.black.opacity(0.6),in:RoundedRectangle(cornerRadius:12));Spacer()}.padding(.horizontal,16)
                 if controller.canReset{Button("Начать новую привязку"){controller.start(fresh:true)}.buttonStyle(.borderedProminent).tint(.orange)}
                 Spacer()

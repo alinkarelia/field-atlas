@@ -11,6 +11,7 @@ import FieldCore
     @Published var pointCount=0
     @Published var savedChunks=0
     @Published var canReset=false
+    @Published var torchOn=false
     @Published var error: String?
     @Published var measurementPoints:[[Double]]=[]
     var currentFrameId:String{frameId}
@@ -30,6 +31,8 @@ import FieldCore
     private var cloudNode=SCNNode()
     private let ci=CIContext(options:[.cacheIntermediates:false])
     var supportsLiDAR: Bool { ARWorldTrackingConfiguration.supportsFrameSemantics(.sceneDepth) }
+    func toggleTorch(){do{torchOn=try CaptureLight.toggle()}catch{self.error=error.localizedDescription}}
+    private func stopTorch(){do{try CaptureLight.turnOff();torchOn=false}catch{self.error="Не удалось выключить фонарь: "+error.localizedDescription}}
     override init(){super.init();view.session.delegate=self;view.scene=SCNScene();view.scene.rootNode.addChildNode(cloudNode);view.scene.rootNode.addChildNode(surfaces.root);view.automaticallyUpdatesLighting=false}
     func configure(store: AppStore,project: FieldProject){self.store=store;projectId=project.id;start()}
     func start(fresh: Bool=false){
@@ -58,8 +61,8 @@ import FieldCore
         else{if let root=store?.root,let reason=DeviceReadiness.stopReason(free:DeviceReadiness.freeSpace(root),thermal:ProcessInfo.processInfo.thermalState){status=reason;return};recording=true;status="Съёмка продолжается"}
     }
     nonisolated func session(_ session: ARSession,didUpdate frame: ARFrame){Task{@MainActor [weak self] in self?.process(frame)}}
-    nonisolated func session(_ session: ARSession,didFailWithError error: Error){Task{@MainActor [weak self] in self?.recording=false;self?.error="Камера остановлена: \(error.localizedDescription)";self?.flush()}}
-    nonisolated func sessionWasInterrupted(_ session: ARSession){Task{@MainActor [weak self] in self?.recording=false;self?.flush();self?.status="Съёмка прервана. Сохранённые части доступны."}}
+    nonisolated func session(_ session: ARSession,didFailWithError error: Error){Task{@MainActor [weak self] in self?.stopTorch();self?.recording=false;self?.error="Камера остановлена: \(error.localizedDescription)";self?.flush()}}
+    nonisolated func sessionWasInterrupted(_ session: ARSession){Task{@MainActor [weak self] in self?.stopTorch();self?.recording=false;self?.flush();self?.status="Съёмка прервана. Сохранённые части доступны."}}
     private func process(_ frame: ARFrame){
         guard recording else{return}
         guard case .normal=frame.camera.trackingState else{
@@ -68,7 +71,7 @@ import FieldCore
         if !recovered{recovered=true;renderPreview();canReset=false}
         surfaces.updateMeshes(frame)
         guard frame.timestamp-lastSample>0.8,let depth=frame.sceneDepth,let confidence=depth.confidenceMap else{return}
-        guard ProcessInfo.processInfo.thermalState != .critical && ProcessInfo.processInfo.thermalState != .serious else{flush();recording=false;status="Пауза: устройству нужно остыть";return}
+        guard ProcessInfo.processInfo.thermalState != .critical && ProcessInfo.processInfo.thermalState != .serious else{stopTorch();flush();recording=false;status="Пауза: устройству нужно остыть";return}
         if let root=store?.root,let free=try? root.resourceValues(forKeys:[.volumeAvailableCapacityForImportantUsageKey]).volumeAvailableCapacityForImportantUsage,free<200_000_000{flush();recording=false;status=hasUnsavedPoints ? "Недостаточно места. Часть остаётся в памяти — не закрывайте приложение.":"Недостаточно места. Части сохранены.";return}
         lastSample=frame.timestamp
         let buffer=depth.depthMap
@@ -140,6 +143,7 @@ import FieldCore
     private var finishing=false
     @Published private(set) var savingMap=false
     func finish(){
+        stopTorch()
         guard !finishing else{return};finishing=true
         recording=false;flush();if hasUnsavedPoints{finishing=false;return}
         savingMap=true

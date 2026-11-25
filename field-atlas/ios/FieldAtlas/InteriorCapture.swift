@@ -40,10 +40,9 @@ import FieldCore
     func configure(store:AppStore,project:FieldProject){self.store=store;self.project=project;surfaceView.scene?.rootNode.addChildNode(measurementNode);startRoom()}
     func toggleCoverage(){coverageVisible.toggle();surfaceView.surfaces.root.isHidden = !coverageVisible}
     func toggleTorch(){
-        guard let device=AVCaptureDevice.default(.builtInWideAngleCamera,for:.video,position:.back),device.hasTorch,device.isTorchAvailable else{toolMessage="Фонарь недоступен на этом устройстве";return}
-        do{try device.lockForConfiguration();defer{device.unlockForConfiguration()};if torchOn{device.torchMode = .off}else{try device.setTorchModeOn(level:0.5)};torchOn.toggle()}catch{self.error=error.localizedDescription}
+        do{torchOn=try CaptureLight.toggle()}catch{self.error=error.localizedDescription}
     }
-    func stopTorch(){if torchOn{toggleTorch()}}
+    func stopTorch(){do{try CaptureLight.turnOff();torchOn=false}catch{self.error="Не удалось выключить фонарь: "+error.localizedDescription}}
     func addNote(_ text:String){
         guard let store,let project,!text.trimmingCharacters(in:.whitespacesAndNewlines).isEmpty else{return}
         do{var record=Observation(projectId:project.id,kind:"object");record.title="Заметка помещения";record.comments=String(text.prefix(4000));record.measurementFrameId=frameId;try store.save(record);toolMessage="Заметка сохранена в объектах проекта"}catch{self.error=error.localizedDescription}
