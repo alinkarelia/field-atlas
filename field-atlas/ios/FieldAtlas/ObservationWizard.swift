@@ -46,7 +46,7 @@ struct ObservationWizard:View {
                             }
                         }.accessibilityIdentifier("observation-gps")
                         if locating{Text(location.message).font(.caption)}
-                        if let accuracy=draft.locationAccuracy{Text("Погрешность GPS: ±\\(Int(accuracy)) м. Проверьте место на плане.").font(.caption).foregroundStyle(.secondary)}
+                        if let accuracy=draft.locationAccuracy{Text("Погрешность GPS: ±\(Int(accuracy)) м. Проверьте место на плане.").font(.caption).foregroundStyle(.secondary)}
                         Button("Указать на плане"){if save(){onPick(draft)}}
                     }header:{if !compactLayout{Text("Объект")}}
                     if isGrave{Section{Text("Безымянное захоронение можно сохранить без имени. Номер объекта уже создан.").font(.footnote)}}
@@ -56,7 +56,7 @@ struct ObservationWizard:View {
                     Section(isGrave ? "Текст с плиты":"Описание"){
                         TextEditor(text:$draft.transcription).frame(minHeight:140).accessibilityLabel(isGrave ? "Текст с плиты":"Описание")
                         if isGrave{Toggle("Нужно уточнить чтение",isOn:$draft.unreadable);Button("Распознать на устройстве"){Task{await readLocally()}};Button("Помощь x0"){guard save() else{return};showAssistant=true}.disabled(!draft.photos.contains(where:{$0.role=="inscription"}))}
-                        Button("Спросить x0 по работе"){showAssistant=true}}
+                        Button("Спросить x0 по работе"){showAssistant=true}
                     }
                     if isGrave{Section("Люди, указанные на памятнике"){ForEach($draft.persons){$person in VStack(alignment:.leading,spacing:10){TextField("Имя",text:$person.name);TextField("Рождение — как на плите",text:$person.birth);TextField("Смерть — как на плите",text:$person.death);Button("Убрать человека из карточки",role:.destructive){draft.persons.removeAll{$0.id==person.id}}}.padding(.vertical,6)};Button("Добавить человека"){draft.persons.append(PersonReading())}}}
                 }
