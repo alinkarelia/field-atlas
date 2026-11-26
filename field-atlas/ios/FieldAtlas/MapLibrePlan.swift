@@ -72,17 +72,20 @@ struct MapLibrePlan:UIViewRepresentable {
         }
         func mapView(_ mapView:MLNMapView,didFinishLoading style:MLNStyle){installBase(mapView);fitInitial(mapView);refresh(mapView)}
         func installBase(_ map:MLNMapView){
-            guard let style=map.style,let url=parent.mapURL else{return}
+            guard let style=map.style,let url=parent.mapURL,let background=style.layer(withIdentifier:"background") else{return}
             for name in ["boundary","water","green","road","building"]{if let layer=style.layer(withIdentifier:"territory-"+name){style.removeLayer(layer)}}
             if let source=style.source(withIdentifier:"territory"){style.removeSource(source)}
             let source=MLNShapeSource(identifier:"territory",url:url,options:nil);style.addSource(source)
+            // Basemap layers must stay below MapLibre's shape-annotation layers.
+            // Appending them with addLayer hides recorded paths and boundary strokes.
+            var previous:MLNStyleLayer=background
             for (kind,color) in [("boundary",UIColor(red:0.9,green:0.93,blue:0.87,alpha:1)),("water",UIColor(red:0.67,green:0.82,blue:0.85,alpha:1)),("green",UIColor(red:0.75,green:0.82,blue:0.7,alpha:1)),("building",UIColor(red:0.76,green:0.71,blue:0.63,alpha:1))]{
                 let layer=MLNFillStyleLayer(identifier:"territory-"+kind,source:source)
                 layer.predicate=NSPredicate(format:"layer == %@",kind);layer.fillColor=NSExpression(forConstantValue:color)
-                if kind=="building"{layer.minimumZoomLevel=13};style.addLayer(layer)
+                if kind=="building"{layer.minimumZoomLevel=13};style.insertLayer(layer,above:previous);previous=layer
             }
             let road=MLNLineStyleLayer(identifier:"territory-road",source:source);road.predicate=NSPredicate(format:"layer == %@","road")
-            road.lineColor=NSExpression(forConstantValue:UIColor(red:0.68,green:0.58,blue:0.43,alpha:1));road.lineWidth=NSExpression(forConstantValue:1.4);style.addLayer(road)
+            road.lineColor=NSExpression(forConstantValue:UIColor(red:0.68,green:0.58,blue:0.43,alpha:1));road.lineWidth=NSExpression(forConstantValue:1.4);style.insertLayer(road,above:previous)
             towns=[]
             if let data=try? Data(contentsOf:url),let json=(try? JSONSerialization.jsonObject(with:data)) as? [String:Any],let features=json["features"] as? [[String:Any]]{
                 for f in features{guard let p=f["properties"] as? [String:Any],p["layer"] as? String=="settlement",let name=p["name"] as? String,let geometry=f["geometry"] as? [String:Any],let point=geometry["coordinates"] as? [Double],point.count==2 else{continue};towns.append((name,CLLocationCoordinate2D(latitude:point[1],longitude:point[0])))}

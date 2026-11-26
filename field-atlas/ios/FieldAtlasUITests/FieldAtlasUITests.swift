@@ -12,6 +12,26 @@ final class FieldAtlasUITests: XCTestCase {
     }
     override func tearDownWithError() throws { app.terminate();XCUIDevice.shared.orientation = .portrait }
     private func capture(_ name:String){let attachment=XCTAttachment(screenshot:XCUIScreen.main.screenshot());attachment.name=name;attachment.lifetime = .keepAlways;add(attachment)}
+    private func assertVisibleSurveyLine(map:XCUIElement,midpoint:CGVector,file:StaticString=#filePath,line:UInt=#line){
+        let frame=map.frame
+        let target=CGRect(x:frame.minX+frame.width*midpoint.dx-12,y:frame.minY+frame.height*midpoint.dy-12,width:24,height:24)
+        let visible=NSPredicate{_,_ in
+            let image=XCUIScreen.main.screenshot().image
+            guard let cg=image.cgImage else{return false}
+            let scale=CGFloat(cg.width)/image.size.width
+            let rect=CGRect(x:target.minX*scale,y:target.minY*scale,width:target.width*scale,height:target.height*scale)
+            guard let crop=cg.cropping(to:rect),let context=CGContext(data:nil,width:crop.width,height:crop.height,bitsPerComponent:8,bytesPerRow:crop.width*4,space:CGColorSpaceCreateDeviceRGB(),bitmapInfo:CGImageAlphaInfo.premultipliedLast.rawValue|CGBitmapInfo.byteOrder32Big.rawValue),let data=context.data else{return false}
+            context.draw(crop,in:CGRect(x:0,y:0,width:CGFloat(crop.width),height:CGFloat(crop.height)))
+            let bytes=data.assumingMemoryBound(to:UInt8.self)
+            var ink=0
+            for i in stride(from:0,to:crop.width*crop.height*4,by:4){
+                let r=Double(bytes[i]),g=Double(bytes[i+1]),b=Double(bytes[i+2])
+                if g>60 && g>r*1.5 && g>b*1.2 && b<120{ink+=1}
+            }
+            return ink>=20
+        }
+        XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:visible,object:nil)],timeout:10),.completed,"The actual survey stroke must be visible above the basemap at its expected screen location",file:file,line:line)
+    }
     private func awaitRotation(landscape:Bool){
         let ready=NSPredicate { _,_ in
             let frame=self.app.windows.firstMatch.frame
@@ -141,6 +161,8 @@ final class FieldAtlasUITests: XCTestCase {
                 XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:updated,object:count)],timeout:5),.completed,"Every map tap must add exactly one vertex")
             }
             XCTAssertEqual(app.staticTexts["track-count"].label,"\(points.count) точек")
+            let a=points[points.count-2],b=points[points.count-1]
+            assertVisibleSurveyLine(map:map,midpoint:CGVector(dx:(a.dx+b.dx)/2,dy:(a.dy+b.dy)/2))
             capture("manual-"+kind);tap(app.buttons["track-save"])
             XCTAssertTrue(app.buttons["workspace-add"].isEnabled)
         }
