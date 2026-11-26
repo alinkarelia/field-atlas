@@ -5,6 +5,7 @@ struct WorkspaceView:View {
     @EnvironmentObject var store:AppStore
     @EnvironmentObject var missions:FieldMissionRecorder
     @Environment(\.scenePhase) private var phase
+    @Environment(\.verticalSizeClass) private var verticalSizeClass
     let project:FieldProject;let onBack:()->Void
     @StateObject private var location=LocationRecorder()
     @State private var editing:Observation?
@@ -32,6 +33,7 @@ struct WorkspaceView:View {
     private var objects:[Observation]{records.filter{!["boundary","road","path"].contains($0.kind)}}
     private var busyMap:Bool{trackKind != nil || marker != nil || pendingPoint != nil}
     private var hasBoundary:Bool{records.contains{$0.kind=="boundary"}}
+    private var compact:Bool{verticalSizeClass == .compact}
     private func trackTitle(_ kind:String)->String{kind=="boundary" ? "Граница":kind=="road" ? "Дорога":"Тропинка"}
     var body:some View {
         ZStack(alignment:.top) {
@@ -39,7 +41,7 @@ struct WorkspaceView:View {
             else{LocalPlan(records:records,track:location.segments,currentPosition:location.freshPosition,centerRequest:centerRequest,onPick:selectPoint).ignoresSafeArea(edges:.bottom)}
             VStack(spacing:8) {
                 header
-                HStack{Spacer();Button{location.locate();centerRequest=UUID();notice=location.message}label:{Image(systemName:"location").frame(width:48,height:48).background(.regularMaterial,in:Circle())}.accessibilityLabel("Моё положение")}.padding(.horizontal,16)
+                if !compact{HStack{Spacer();Button{location.locate();centerRequest=UUID();notice=location.message}label:{Image(systemName:"location").frame(width:48,height:48).background(.regularMaterial,in:Circle())}.accessibilityLabel("Моё положение")}.padding(.horizontal,16)}
                 Spacer(minLength:0)
                 if missions.active{Button("● Записывается: "+(missions.selected?.title ?? "маршрут")){showMissions=true}.font(.footnote).padding(8).background(.regularMaterial,in:Capsule())}
                 if let notice {HStack{Text(notice).font(.footnote);Spacer();Button{self.notice=nil}label:{Image(systemName:"xmark").frame(width:36,height:36)}.accessibilityLabel("Убрать уведомление")}.padding(.leading,12).background(.regularMaterial,in:RoundedRectangle(cornerRadius:12)).padding(.horizontal)}
@@ -74,7 +76,7 @@ struct WorkspaceView:View {
             HStack{Text(project.type == .cemetery ? "Работа на кладбище":"План работы").font(.headline);Spacer();Button("Все действия"){showTools=true}.font(.subheadline).accessibilityIdentifier("workspace-guide")}
             if project.type.outdoor {
                 HStack(spacing:6){quick("Граница","point.topleft.down.curvedto.point.bottomright.up","boundary");quick("Дорога","road.lanes","road");quick("Тропинка","figure.walk","path")}
-                if project.type == .cemetery{Text(hasBoundary ? "Граница нанесена. Добавляйте захоронения и метки; снимайте сектора по мере обхода.":"Начните с обхода границы. Захоронения можно добавлять и до завершения карты.").font(.caption).foregroundStyle(.secondary)}
+                if project.type == .cemetery && !compact{Text(hasBoundary ? "Граница нанесена. Добавляйте захоронения и метки; снимайте сектора по мере обхода.":"Начните с обхода границы. Захоронения можно добавлять и до завершения карты.").font(.caption).foregroundStyle(.secondary)}
             } else{Text("«Снять» открывает камеру. После обмера комнаты проверьте её план, проёмы и размеры.").font(.subheadline).foregroundStyle(.secondary)}
             HStack{Text("Карточек: \(objects.count)");Spacer();Button("Секторы: \(store.state.scans.filter{$0.projectId==project.id}.count)"){showScanReview=true}.accessibilityIdentifier("workspace-scans")}.font(.caption)
         }.padding(14).background(.regularMaterial,in:RoundedRectangle(cornerRadius:18)).padding(.horizontal,12)
@@ -89,7 +91,7 @@ struct WorkspaceView:View {
     private func trackPanel(_ kind:String)->some View {
         VStack(alignment:.leading,spacing:10){
             HStack{Text(trackTitle(kind)+(location.manual ? " · по точкам":" · обход GPS")).font(.headline);Spacer();Text("\(location.points.count) точек").monospacedDigit().font(.caption).accessibilityIdentifier("track-count")}
-            Text(location.manual ? "Касайтесь плана: добавляйте углы по порядку. Двумя пальцами меняйте масштаб.":kind=="boundary" ? "Идите вдоль внешней границы и вернитесь к началу. Точки записываются автоматически.":"Идите по середине выбранной дороги или тропинки. В конце нажмите «Сохранить».").font(.caption)
+            if !compact{Text(location.manual ? "Касайтесь плана: добавляйте углы по порядку. Двумя пальцами меняйте масштаб.":kind=="boundary" ? "Идите вдоль внешней границы и вернитесь к началу. Точки записываются автоматически.":"Идите по середине выбранной дороги или тропинки. В конце нажмите «Сохранить».").font(.caption)}
             if !location.manual{Text(location.message).font(.caption).foregroundStyle(.secondary)}
             HStack{if !location.manual{Button(location.paused ? "Продолжить":"Пауза"){location.pause()}.buttonStyle(.bordered).accessibilityIdentifier("track-pause")};Button("Убрать точку"){location.undo()}.disabled(location.points.isEmpty).accessibilityIdentifier("track-undo");Spacer();Button("Сохранить"){finishTrack()}.buttonStyle(.borderedProminent).disabled(location.points.count < (kind=="boundary" ? 3:2)).accessibilityIdentifier("track-save")}
             Button("Отменить \(location.manual ? "контур":"обход")",role:.destructive){confirmDiscard=true}.font(.caption).accessibilityIdentifier("track-discard")
@@ -121,7 +123,7 @@ struct WorkspaceView:View {
                 SurveyAction(title:"Помощник x0",detail:"Подсказки по работе; чтение надписи — из её фотографии в карточке",symbol:"sparkles"){afterTools{showAssistant=true}}
                 SurveyAction(title:"Полевые задания",detail:"Маршрут пешком или на машине, время и скорость",symbol:"clock"){afterTools{showMissions=true}}
                 Button("Снятые сектора и привязка"){afterTools{showScanReview=true}}
-                if store.state.origins[project.id] != nil{Button(showGeo ? "Показать рабочий план":"Показать географический обзор"){showGeo.toggle();showTools=false}}
+                if store.state.origins[project.id] != nil{Button(showGeo ? "Показать рабочий план":"Показать географический обзор"){showGeo.toggle();showTools=false;if showGeo{let local=records.filter{$0.origin==nil && ($0.point != nil || !$0.points.isEmpty)}.count;notice=local>0 ? "Без географической привязки: \(local). Эти объекты остаются на рабочем плане.":nil}}}
             }
         }.navigationTitle(project.type == .cemetery ? "Работа на кладбище":"Действия проекта").navigationBarTitleDisplayMode(.inline).toolbar{Button("К карте"){showTools=false}}}
     }

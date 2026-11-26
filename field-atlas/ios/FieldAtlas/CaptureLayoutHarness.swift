@@ -23,7 +23,7 @@ struct CaptureLayoutHarness:View {
                 CaptureTool(symbol:"ellipsis",label:"Ещё",id:"room-more"){count+=1}
                 CaptureTool(symbol:"x0",label:"Помощник x0",id:"capture-assistant"){count+=1}
             }
-        }.accessibilityIdentifier("layout-fixture").statusBarHidden(true).persistentSystemOverlays(.hidden)
+        }.statusBarHidden(true).persistentSystemOverlays(.hidden)
             .sheet(isPresented:$help){CaptureHelp(title:"Проверка интерфейса",status:"Это проверка расположения кнопок без камеры и LiDAR.",items:[])}
     }
 }

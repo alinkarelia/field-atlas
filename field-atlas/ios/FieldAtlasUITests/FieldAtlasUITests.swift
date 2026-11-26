@@ -29,6 +29,17 @@ final class FieldAtlasUITests: XCTestCase {
             scroll.swipeUp()
         }
     }
+    private func revealList(_ element:XCUIElement){
+        let list=app.collectionViews.firstMatch.exists ? app.collectionViews.firstMatch:app.scrollViews.firstMatch
+        XCTAssertTrue(list.exists,"A visible list is required for scrolling")
+        for _ in 0..<14 {
+            if element.exists && element.isHittable{return}
+            let above=element.exists && !element.frame.isEmpty && element.frame.midY < list.frame.minY+40
+            let start=list.coordinate(withNormalizedOffset:CGVector(dx:0.5,dy:above ? 0.4:0.65))
+            let end=list.coordinate(withNormalizedOffset:CGVector(dx:0.5,dy:above ? 0.65:0.4))
+            start.press(forDuration:0.05,thenDragTo:end)
+        }
+    }
     private func create(_ kind:String,_ title:String){
         let kindButton=app.buttons["project-kind-"+kind];revealProject(kindButton);tap(kindButton);let field=app.textFields["project-title"];tap(field);field.typeText(title);tap(app.buttons["project-create"]);XCTAssertTrue(app.buttons["workspace-add"].waitForExistence(timeout:10))
     }
@@ -137,7 +148,7 @@ final class FieldAtlasUITests: XCTestCase {
         for kind in ["entrance","tree","dump","container"] {
             tap(app.buttons["workspace-tools"])
             let feature=app.buttons["marker-"+kind]
-            for _ in 0..<6{if feature.isHittable{break};app.swipeUp()}
+            revealList(feature)
             tap(feature)
             app.otherElements["survey-map"].firstMatch.coordinate(withNormalizedOffset:CGVector(dx:0.5,dy:0.38)).tap()
             XCTAssertTrue(app.textFields["observation-title"].waitForExistence(timeout:8))
@@ -155,5 +166,18 @@ final class FieldAtlasUITests: XCTestCase {
         let alert=app.alerts["Фотография"];if alert.waitForExistence(timeout:8){tap(alert.buttons["Понятно"])}
         tap(app.buttons["photo-close"]);XCTAssertTrue(app.buttons["photo-role-overview"].waitForExistence(timeout:5));capture("grave-photo-checklist")
         tap(app.buttons["Свернуть"]);tap(app.buttons["workspace-objects"]);XCTAssertTrue(app.buttons.matching(NSPredicate(format:"label CONTAINS %@","0 фото")).firstMatch.exists)
+    }
+    func testFixturePhotoRetakeAppendPreviewAndSelectForOCR(){
+        app.terminate();app.launchEnvironment["FIELD_ATLAS_TEST_PHOTO"]="1";app.launch()
+        create("cemetery","Фотографии — тестовый источник");tap(app.buttons["workspace-add"]);tap(app.buttons["wizard-next"])
+        tap(app.buttons["photo-role-overview"]);tap(app.buttons["photo-shutter"]);tap(app.buttons["photo-retake"]);tap(app.buttons["photo-shutter"]);capture("photo-review-synthetic-fixture");tap(app.buttons["photo-use"])
+        tap(app.buttons["photo-role-overview"]);tap(app.buttons["photo-shutter"]);tap(app.buttons["photo-use"])
+        XCTAssertEqual(app.buttons.matching(NSPredicate(format:"label == %@","Открыть снимок: Общий вид")).count,2)
+        let inscription=app.buttons["photo-role-inscription"];for _ in 0..<5{if inscription.isHittable{break};app.swipeUp()};tap(inscription);tap(app.buttons["photo-shutter"]);tap(app.buttons["photo-use"])
+        let preview=app.buttons.matching(NSPredicate(format:"label == %@","Открыть снимок: Плита или табличка")).firstMatch
+        for _ in 0..<5{if preview.isHittable{break};app.swipeUp()};tap(preview);tap(app.buttons["Прочитать этот снимок с x0"])
+        XCTAssertTrue(app.navigationBars["Помощник x0"].waitForExistence(timeout:8));XCTAssertTrue(app.staticTexts["x0 · чтение надписи"].exists);capture("ocr-selected-synthetic-photo")
+        tap(app.buttons["К работе"]);tap(app.buttons["Свернуть"]);tap(app.buttons["workspace-objects"])
+        XCTAssertTrue(app.buttons.matching(NSPredicate(format:"label CONTAINS %@","3 фото")).firstMatch.exists)
     }
 }

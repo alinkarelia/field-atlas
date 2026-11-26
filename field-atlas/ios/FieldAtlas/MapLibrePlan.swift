@@ -20,12 +20,15 @@ struct MapLibrePlan:UIViewRepresentable {
         func refresh(_ map:MLNMapView){
             guard map.style != nil else{return}
             if let existing=map.annotations{map.removeAnnotations(existing)}
-            func coordinate(_ point:[Double])->CLLocationCoordinate2D{CLLocationCoordinate2D(latitude:origin.lat+point[1]/111320,longitude:origin.lon+point[0]/(111320*cos(origin.lat * .pi/180)))}
             for record in records {
-                if let point=record.point,point.count==2{let a=MLNPointAnnotation();a.coordinate=coordinate(point);a.title=record.title;map.addAnnotation(a)}
+                // A later GPS fix must not silently georeference an earlier local drawing.
+                guard let recordOrigin=record.origin else{continue}
+                func coordinate(_ point:[Double])->CLLocationCoordinate2D?{SurveyGeography.coordinate(point,origin:recordOrigin)}
+                if let point=record.point,let location=coordinate(point){let a=MLNPointAnnotation();a.coordinate=location;a.title=record.title;map.addAnnotation(a)}
                 if record.points.count>=2 {
                     for part in (record.kind=="boundary" || record.segments.isEmpty ? [record.points]:record.segments) where part.count>=2{
-                    var coords=part.map(coordinate)
+                    var coords=part.compactMap(coordinate)
+                    guard coords.count==part.count else{continue}
                     if record.kind=="boundary"{let shape=MLNPolygon(coordinates:&coords,count:UInt(coords.count));map.addAnnotation(shape)}
                     else{let line=MLNPolyline(coordinates:&coords,count:UInt(coords.count));map.addAnnotation(line)}}
                 }
@@ -33,5 +36,13 @@ struct MapLibrePlan:UIViewRepresentable {
         }
         func mapView(_ mapView:MLNMapView,strokeColorForShapeAnnotation annotation:MLNShape)->UIColor{UIColor(red:0.13,green:0.31,blue:0.24,alpha:1)}
         func mapView(_ mapView:MLNMapView,fillColorForPolygonAnnotation annotation:MLNPolygon)->UIColor{UIColor(red:0.3,green:0.5,blue:0.3,alpha:0.16)}
+    }
+}
+
+enum SurveyGeography {
+    static func coordinate(_ point:[Double],origin:GeoOrigin?)->CLLocationCoordinate2D? {
+        guard let origin,point.count==2,point.allSatisfy(\.isFinite),origin.lat.isFinite,origin.lon.isFinite,abs(origin.lat)<89.9,abs(origin.lon)<=180 else{return nil}
+        let value=CLLocationCoordinate2D(latitude:origin.lat+point[1]/111320,longitude:origin.lon+point[0]/(111320*cos(origin.lat * .pi/180)))
+        return CLLocationCoordinate2DIsValid(value) ? value:nil
     }
 }

@@ -67,7 +67,7 @@ struct CeilingCaptureScreen:View {
                 CaptureTool(symbol:controller.torchOn ? "flashlight.on.fill":"flashlight.off.fill",label:"Фонарик",id:"capture-torch",active:controller.torchOn){controller.toggleTorch()}
                 CaptureTool(symbol:"questionmark",label:"Как измерить потолок",id:"capture-help"){showHelp=true}
             } right: {
-                CaptureTool(symbol:"arrow.down.to.line",label:"Указать точку пола",id:"ceiling-floor",active:controller.floor != nil){controller.floorPoint()}
+                CaptureTool(symbol:controller.stopped ? "play.fill":"arrow.down.to.line",label:controller.stopped ? "Продолжить замер":"Указать точку пола",id:"ceiling-floor",active:controller.floor != nil){if controller.stopped{controller.start()}else{controller.floorPoint()}}
                 CaptureTool(symbol:"plus",label:"Добавить угол потолка",id:"ceiling-corner"){controller.corner()}.disabled(controller.floor==nil || controller.stopped)
                 CaptureTool(symbol:"arrow.uturn.backward",label:"Убрать последнюю точку",id:"ceiling-undo"){controller.undo()}
                 CaptureTool(symbol:"square.dashed",label:"Предложить распознанный контур",id:"ceiling-propose"){controller.propose();showHelp=true}

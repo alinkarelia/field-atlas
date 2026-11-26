@@ -20,6 +20,9 @@ import AVFoundation
     func start()async {
         desiredRunning=true
         guard !starting else{return};starting=true;defer{starting=false}
+        #if DEBUG
+        if fixtureEnabled{ready=true;return}
+        #endif
         if AVCaptureDevice.authorizationStatus(for:.video) == .notDetermined{_ = await AVCaptureDevice.requestAccess(for:.video)}
         guard desiredRunning else{return}
         guard AVCaptureDevice.authorizationStatus(for:.video) == .authorized else{error="Разрешите камеру в настройках приложения.";return}
@@ -53,6 +56,10 @@ import AVFoundation
     }
     func capture(){
         guard ready,!busy,photo==nil else{return};busy=true
+        #if DEBUG
+        if fixtureEnabled{receive(data:Self.fixtureJPEG(),message:nil);return}
+        #endif
+        guard session.isRunning,output.connection(with:.video)?.isActive == true else{busy=false;error="Камера ещё готовится. Повторите снимок через секунду.";return}
         let angle=rotation?.videoRotationAngleForHorizonLevelCapture ?? 90
         if let connection=output.connection(with:.video),connection.isVideoRotationAngleSupported(angle){connection.videoRotationAngle=angle}
         let settings=AVCapturePhotoSettings(format:[AVVideoCodecKey:AVVideoCodecType.jpeg]);settings.photoQualityPrioritization = .quality;settings.flashMode = .off
@@ -60,8 +67,13 @@ import AVFoundation
     }
     nonisolated func photoOutput(_ output:AVCapturePhotoOutput,didFinishProcessingPhoto photo:AVCapturePhoto,error:Error?){
         let data=photo.fileDataRepresentation(),message=error?.localizedDescription
-        Task{@MainActor [weak self] in guard let self else{return};self.busy=false;if let message{self.error=message}else if let data,UIImage(data:data) != nil{self.photo=data;self.stop();UIImpactFeedbackGenerator(style:.light).impactOccurred()}else{self.error="Фотография не получена. Повторите снимок."}}
+        Task{@MainActor [weak self] in self?.receive(data:data,message:message)}
     }
+    private func receive(data:Data?,message:String?){busy=false;if let message{error=message}else if let data,UIImage(data:data) != nil{photo=data;stop();UIImpactFeedbackGenerator(style:.light).impactOccurred()}else{error="Фотография не получена. Повторите снимок."}}
+    #if DEBUG
+    private var fixtureEnabled:Bool{ProcessInfo.processInfo.environment["FIELD_ATLAS_TEST_PHOTO"] == "1" && UUID(uuidString:ProcessInfo.processInfo.environment["FIELD_ATLAS_TEST_SESSION"] ?? "") != nil}
+    private static func fixtureJPEG()->Data?{UIGraphicsImageRenderer(size:CGSize(width:720,height:960)).image{c in UIColor.white.setFill();c.fill(CGRect(x:0,y:0,width:720,height:960));("ТЕСТОВЫЙ СНИМОК\n18?4\nБез камеры и LiDAR" as NSString).draw(in:CGRect(x:60,y:220,width:600,height:400),withAttributes:[.font:UIFont.systemFont(ofSize:42),.foregroundColor:UIColor.black])}.jpegData(compressionQuality:0.95)}
+    #endif
 }
 
 final class PhotoPreviewView:UIView {

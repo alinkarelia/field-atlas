@@ -36,5 +36,14 @@ import FieldCore
         XCTAssertEqual(Set(SurveyFeature.allCases.map(\.rawValue)),Set(["entrance","tree","dump","container","obstacle","anomaly"]))
         XCTAssertEqual(Set(SurveyFeature.allCases.map(\.symbol)).count,SurveyFeature.allCases.count)
     }
+    func testUnanchoredDrawingCannotBecomeGeographicAfterLaterGPSFix(){
+        XCTAssertNil(SurveyGeography.coordinate([10,20],origin:nil))
+        let origin=GeoOrigin(lat:59,lon:30)
+        let point=SurveyGeography.coordinate([0,111.32],origin:origin)
+        XCTAssertEqual(point?.latitude ?? 0,59.001,accuracy:0.00000001)
+        XCTAssertEqual(point?.longitude ?? 0,30,accuracy:0.00000001)
+        XCTAssertNil(SurveyGeography.coordinate([.nan,0],origin:origin))
+        XCTAssertNil(SurveyGeography.coordinate([0],origin:origin))
+    }
     private func fix(lat:Double,lon:Double,accuracy:Double=3)->CLLocation{CLLocation(coordinate:CLLocationCoordinate2D(latitude:lat,longitude:lon),altitude:0,horizontalAccuracy:accuracy,verticalAccuracy:5,timestamp:Date())}
 }

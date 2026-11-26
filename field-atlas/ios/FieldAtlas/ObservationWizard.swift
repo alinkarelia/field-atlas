@@ -130,7 +130,8 @@ struct ObservationWizard:View {
         draft=try store.attachPhoto(data,to:draft,role:role);notice="Фото «\(["overview":"Общий вид","inscription":"Плита или табличка","portrait":"Портрет","detail":"Деталь"][role] ?? role)» сохранено. Можно снять следующий вид."
     }
     private func readLocally()async{
-        guard let photo=draft.photos.last(where:{$0.role=="inscription"}),let file=store.assetURL(photo.id),let image=UIImage(contentsOfFile:file.path)?.cgImage else{notice="Сначала снимите надпись";return}
+        let options:[CFString:Any]=[kCGImageSourceCreateThumbnailFromImageAlways:true,kCGImageSourceCreateThumbnailWithTransform:true,kCGImageSourceThumbnailMaxPixelSize:4096]
+        guard let photo=draft.photos.last(where:{$0.role=="inscription"}),let file=store.assetURL(photo.id),let source=CGImageSourceCreateWithURL(file as CFURL,nil),let image=CGImageSourceCreateThumbnailAtIndex(source,0,options as CFDictionary) else{notice="Сначала снимите надпись";return}
         do{machineText=try await LocalOCR.read(image);machineSourceHash=photo.sha256;if machineText.isEmpty{notice="Текст не найден. Попробуйте другой свет или x0."}else{showReading=true}}catch{notice=error.localizedDescription}
     }
     private func readingProposal(_ text:String,sourceHash:String)->some View{VStack(alignment:.leading,spacing:12){Text("Предложение · требуется проверка").font(.caption).foregroundStyle(.orange);Text(text).textSelection(.enabled);Button("Вставить предложенный текст"){guard draft.photos.contains(where:{$0.role=="inscription" && $0.sha256==sourceHash}) else{notice="Фотография изменилась. Повторите чтение.";showReading=false;return};draft.transcription=text;draft.unreadable=true;save();showReading=false}.buttonStyle(.borderedProminent)}}
