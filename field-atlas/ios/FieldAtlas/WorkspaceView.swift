@@ -50,7 +50,7 @@ struct WorkspaceView:View {
                 else{nextStepPanel}
                 dockBar
             }
-        }.foregroundStyle(Palette.ink)
+        }
         .onAppear{location.origin=store.state.origins[project.id];if let saved=store.loadTrack(project.id){trackKind=saved.kind;location.restore(saved)};location.trackChanged={saveTrack()};location.originChanged={origin in do{try store.setOrigin(origin,projectId:project.id)}catch{notice=error.localizedDescription}}}
         .onDisappear{saveTrack();location.stop()}
         .onChange(of:phase){_,p in if p == .background,trackKind != nil,!location.manual,!location.paused{location.pause();saveTrack()}}
