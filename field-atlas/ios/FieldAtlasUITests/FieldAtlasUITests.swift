@@ -175,7 +175,7 @@ final class FieldAtlasUITests: XCTestCase {
         XCTAssertEqual(app.buttons.matching(NSPredicate(format:"label == %@","Открыть снимок: Общий вид")).count,2)
         let inscription=app.buttons["photo-role-inscription"];for _ in 0..<5{if inscription.isHittable{break};app.swipeUp()};tap(inscription);tap(app.buttons["photo-shutter"]);tap(app.buttons["photo-use"])
         let preview=app.buttons.matching(NSPredicate(format:"label == %@","Открыть снимок: Плита или табличка")).firstMatch
-        for _ in 0..<5{if preview.isHittable{break};app.swipeUp()};tap(preview);tap(app.buttons["Прочитать этот снимок с x0"])
+        for _ in 0..<5{if preview.isHittable{break};app.swipeUp()};tap(preview);capture("inscription-preview-actions");tap(app.buttons["Прочитать этот снимок с x0"])
         XCTAssertTrue(app.navigationBars["Помощник x0"].waitForExistence(timeout:8));XCTAssertTrue(app.staticTexts["x0 · чтение надписи"].exists);capture("ocr-selected-synthetic-photo")
         tap(app.buttons["К работе"]);tap(app.buttons["Свернуть"]);tap(app.buttons["workspace-objects"])
         XCTAssertTrue(app.buttons.matching(NSPredicate(format:"label CONTAINS %@","3 фото")).firstMatch.exists)

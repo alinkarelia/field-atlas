@@ -33,4 +33,18 @@ import FieldCore
         XCTAssertTrue(prepared.transformed);XCTAssertEqual(prepared.originalHash,hash);XCTAssertEqual(prepared.sourceHash,SiteTransfer.digest(prepared.data));XCTAssertLessThanOrEqual(prepared.data.count,6*1024*1024)
         XCTAssertEqual(prepared.data.prefix(2),Data([0xff,0xd8]));XCTAssertEqual(SiteTransfer.digest(original),hash)
     }
+    func testSmallFileAboveServerPixelLimitIsDownsampled()throws {
+        let format=UIGraphicsImageRendererFormat();format.scale=1;format.opaque=true
+        let size=CGSize(width:6001,height:4000)
+        let original=try XCTUnwrap(UIGraphicsImageRenderer(size:size,format:format).image{c in UIColor.gray.setFill();c.fill(CGRect(origin:.zero,size:size))}.jpegData(compressionQuality:0.85))
+        XCTAssertLessThan(original.count,6*1024*1024,"This regression is about resolution, not a large upload")
+        let hash=SiteTransfer.digest(original),prepared=try AssistantImage.prepare(original,hash:hash)
+        let source=try XCTUnwrap(CGImageSourceCreateWithData(prepared.data as CFData,nil))
+        let properties=try XCTUnwrap(CGImageSourceCopyPropertiesAtIndex(source,0,nil) as? [CFString:Any])
+        let width=try XCTUnwrap(properties[kCGImagePropertyPixelWidth] as? NSNumber)
+        let height=try XCTUnwrap(properties[kCGImagePropertyPixelHeight] as? NSNumber)
+        XCTAssertLessThanOrEqual(width.doubleValue*height.doubleValue,24_000_000)
+        XCTAssertLessThanOrEqual(prepared.data.count,6*1024*1024)
+        XCTAssertTrue(prepared.transformed);XCTAssertEqual(prepared.originalHash,hash);XCTAssertEqual(prepared.sourceHash,SiteTransfer.digest(prepared.data));XCTAssertEqual(SiteTransfer.digest(original),hash)
+    }
 }
