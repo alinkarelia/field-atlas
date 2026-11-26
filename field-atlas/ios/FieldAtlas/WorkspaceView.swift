@@ -51,7 +51,7 @@ struct WorkspaceView:View {
         }.foregroundStyle(Palette.ink)
         .onAppear{location.origin=store.state.origins[project.id];if let saved=store.loadTrack(project.id){trackKind=saved.kind;location.restore(saved)};location.trackChanged={saveTrack()};location.originChanged={origin in do{try store.setOrigin(origin,projectId:project.id)}catch{notice=error.localizedDescription}}}
         .onDisappear{saveTrack();location.stop()}
-        .onChange(of:phase){_,p in if p != .active,trackKind != nil,!location.manual,!location.paused{location.pause();saveTrack()}}
+        .onChange(of:phase){_,p in if p == .background,trackKind != nil,!location.manual,!location.paused{location.pause();saveTrack()}}
         .onChange(of:location.position){_,_ in if markerGPS,let p=location.freshPosition{saveMarker(p,gps:true)}}
         .alert("В границе есть разрывы GPS",isPresented:$confirmBoundary){Button("Сохранить с пометкой проверки"){finishTrack(acceptGap:true)};Button("Вернуться к обходу",role:.cancel){}}message:{Text("Концы разрывов соединятся прямыми. Проверьте эти участки; точность границы ограничена GPS.")}
         .alert("Отменить текущий обход?",isPresented:$confirmDiscard){Button("Удалить незавершённый обход",role:.destructive){do{try store.clearTrack(project.id);location.stop();location.points=[];location.segments=[];trackKind=nil;notice="Незавершённый обход удалён"}catch{notice=error.localizedDescription}};Button("Продолжить",role:.cancel){}}message:{Text("Сохранённые границы, дороги и карточки останутся.")}

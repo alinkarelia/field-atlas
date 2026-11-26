@@ -16,7 +16,7 @@ enum Palette {
     @Environment(\.scenePhase) private var phase
     var body:some Scene{WindowGroup{launchContent.environmentObject(store).environmentObject(sync).environmentObject(account).environmentObject(siteTransfer).environmentObject(workLocation).environmentObject(missions).tint(Palette.green).preferredColorScheme(.light)
         .onAppear{missions.configure(store)}
-        .onChange(of:phase){_,value in if value != .active{workLocation.stop(reason:"background");siteTransfer.cancel()}}
+        .onChange(of:phase){_,value in if value == .background{workLocation.stop(reason:"background");siteTransfer.cancel()}}
         .onChange(of:account.hasSavedLogin){_,value in if !value{workLocation.stop(reason:"logout");siteTransfer.cancel()}}
     }}
     @ViewBuilder private var launchContent:some View {

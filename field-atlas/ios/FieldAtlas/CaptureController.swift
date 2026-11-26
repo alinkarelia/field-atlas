@@ -34,7 +34,7 @@ import FieldCore
     var supportsLiDAR: Bool { ARWorldTrackingConfiguration.supportsFrameSemantics(.sceneDepth) }
     func toggleTorch(){do{torchOn=try CaptureLight.toggle()}catch{self.error=error.localizedDescription}}
     func toggleCoverage(){coverageVisible.toggle();surfaces.root.isHidden = !coverageVisible;cloudNode.isHidden = !coverageVisible}
-    func saveSector(){let count=savedChunks;flush();if savedChunks>count{UIImpactFeedbackGenerator(style:.light).impactOccurred();status="Сектор сохранён. Продолжайте с небольшим перекрытием."}}
+    func saveSector(){guard !points.isEmpty else{error=savedChunks>0 ? "Все полученные точки уже сохранены. Можно продолжать съёмку.":"Пока нет точек глубины. Медленно осмотрите поверхность с расстояния 1–3 м.";return};let count=savedChunks;flush();if savedChunks>count{UIImpactFeedbackGenerator(style:.light).impactOccurred();status="Сектор сохранён. Продолжайте с небольшим перекрытием."}}
     private func stopTorch(){do{try CaptureLight.turnOff();torchOn=false}catch{self.error="Не удалось выключить фонарь: "+error.localizedDescription}}
     override init(){super.init();view.session.delegate=self;view.scene=SCNScene();view.scene.rootNode.addChildNode(cloudNode);view.scene.rootNode.addChildNode(surfaces.root);view.automaticallyUpdatesLighting=false}
     func configure(store: AppStore,project: FieldProject){self.store=store;projectId=project.id;start()}

@@ -31,6 +31,7 @@ struct LocalPlan: View {
             ZStack(alignment:.topLeading) {
                 Canvas { context,size in draw(&context,size:size,view:view,step:step) }
                     .contentShape(Rectangle())
+                    .accessibilityElement(children:.ignore)
                     .accessibilityLabel("План участка")
                     .accessibilityIdentifier("survey-map")
                     .gesture(DragGesture(minimumDistance:6)
