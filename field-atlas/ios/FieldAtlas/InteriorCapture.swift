@@ -37,7 +37,7 @@ import FieldCore
     override init(){super.init();view.delegate=self;view.captureSession.delegate=self;view.isModelEnabled=false}
     required init?(coder:NSCoder){super.init();view.delegate=self;view.captureSession.delegate=self;view.isModelEnabled=false}
     func encode(with coder:NSCoder){}
-    func configure(store:AppStore,project:FieldProject){self.store=store;self.project=project;surfaceView.scene?.rootNode.addChildNode(measurementNode);startRoom()}
+    func configure(store:AppStore,project:FieldProject){guard self.project?.id != project.id else{return};self.store=store;self.project=project;surfaceView.scene?.rootNode.addChildNode(measurementNode);startRoom()}
     func toggleCoverage(){coverageVisible.toggle();surfaceView.surfaces.root.isHidden = !coverageVisible}
     func toggleTorch(){
         do{torchOn=try CaptureLight.toggle()}catch{self.error=error.localizedDescription}
@@ -82,7 +82,7 @@ import FieldCore
             toolMessage=String(format:"Размер №%d: %.2f м · сохранён",measureNumber,distance)
         }catch{self.error=error.localizedDescription}
     }
-    func startRoom(){guard supported,!processing,unsaved==nil else{return};if let root=store?.root,let reason=DeviceReadiness.stopReason(free:DeviceReadiness.freeSpace(root),thermal:ProcessInfo.processInfo.thermalState){message=reason;return};if newGroupOnResume{frameId=UUID().uuidString;captured=[];savedCount=0;latest=nil;newGroupOnResume=false};surfaceView.surfaces.reset();liveWalls=0;liveOpenings=0;var config=RoomCaptureSession.Configuration();config.isCoachingEnabled=false;view.captureSession.run(configuration:config);scanning=true;message="Снимите все стены, затем окна и проходы. Следуйте подсказкам камеры."}
+    func startRoom(){guard supported,!scanning,!processing,unsaved==nil else{return};if let root=store?.root,let reason=DeviceReadiness.stopReason(free:DeviceReadiness.freeSpace(root),thermal:ProcessInfo.processInfo.thermalState){message=reason;return};if newGroupOnResume{frameId=UUID().uuidString;captured=[];savedCount=0;latest=nil;newGroupOnResume=false};surfaceView.surfaces.reset();liveWalls=0;liveOpenings=0;var config=RoomCaptureSession.Configuration();config.isCoachingEnabled=false;view.captureSession.run(configuration:config);scanning=true;message="Снимите все стены, затем окна и проходы. Состояние и подсказки доступны через значок «?»."}
     nonisolated func captureSession(_ session:RoomCaptureSession,didUpdate room:CapturedRoom){Task{@MainActor [weak self] in self?.showProgress(room)}}
     private func showProgress(_ room:CapturedRoom){
         guard scanning else{return};liveWalls=room.walls.count;liveOpenings=room.doors.count+room.windows.count+room.openings.count
@@ -235,7 +235,9 @@ struct InteriorCaptureScreen:View {
             }
         }.statusBarHidden(true).persistentSystemOverlays(.hidden)
         .onAppear{controller.configure(store:store,project:project)}
-        .onDisappear{controller.pause();floorAdvisor.stop()}
+        // Reviewing the saved plan must not reset the coordinate frame or start a new room.
+        // Ceiling capture explicitly calls pause because it takes over the AR camera.
+        .onDisappear{if !review{controller.pause()};floorAdvisor.stop()}
         .onChange(of:phase){_,value in if value != .active{controller.pause();floorAdvisor.stop()}else if !controller.scanning && !controller.processing{showResult=true}}
         .onChange(of:health.stopReason){_,reason in if let reason,controller.scanning{controller.finishRoom();controller.message=reason}}
         .onChange(of:controller.processing){_,processing in
@@ -266,7 +268,7 @@ struct InteriorCaptureScreen:View {
         }.navigationTitle("Инструменты").toolbar{Button("К камере"){showMore=false}}}}
         .sheet(isPresented:$showResult){resultView.interactiveDismissDisabled(controller.hasUnsaved)}
         .sheet(isPresented:$showAssistant,onDismiss:{showResult=true}){FieldAssistantView(project:project,context:"Помещение RoomPlan. Стен: \(controller.liveWalls), проёмов: \(controller.liveOpenings). Этаж: \(controller.selectedLevel). \(controller.message)")}
-        .fullScreenCover(isPresented:$review){if let doc=controller.latest{NativeRoomPlanReview(document:doc,onLevelChange:controller.changeLevel,project:project,onCeilingStart:controller.pause,onCeilingChange:controller.changeCeiling)}}
+        .fullScreenCover(isPresented:$review,onDismiss:{if !controller.scanning && !controller.processing{showResult=true}}){if let doc=controller.latest{NativeRoomPlanReview(document:doc,onLevelChange:controller.changeLevel,project:project,onCeilingStart:controller.pause,onCeilingChange:controller.changeCeiling)}}
         .sheet(isPresented:$editFloor){NavigationStack{Form{
             Section("Этаж текущей / следующей комнаты"){Stepper("Этаж \(floorChoice)",value:$floorChoice,in:-20...200);Text("0 — цоколь; отрицательные номера — подземные уровни. Сохранённые комнаты редактируются в плане.").font(.footnote)}
             Section("Подсказка по высоте"){Text(floorAdvisor.message);Text("Перепад давления — только подсказка; этаж подтверждается вручную.").font(.footnote);Button(floorAdvisor.active ? "Выключить подсказки":"Включить подсказки барометра"){if floorAdvisor.active{floorAdvisor.stop()}else{floorAdvisor.start()}}}
