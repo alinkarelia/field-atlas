@@ -29,7 +29,18 @@ struct TerritoryView:View {
                     let places=catalog.places.filter{$0.matches(theme:theme,period:period,query:query)}
                     Text("Найдено: \(places.count)").font(.caption).accessibilityIdentifier("territory-count")
                     ForEach(places){place in
-                        Button{onSelect(place);dismiss()}label:{VStack(alignment:.leading,spacing:4){Text(place.name);Text(place.locality).font(.caption).foregroundStyle(.secondary);if place.approximate{Text("Приблизительное положение").font(.caption2).foregroundStyle(.secondary)}}.disabled(place.point==nil)
+                        Button {
+                            onSelect(place)
+                            dismiss()
+                        } label: {
+                            VStack(alignment:.leading,spacing:4) {
+                                Text(place.name)
+                                Text(place.locality).font(.caption).foregroundStyle(.secondary)
+                                if place.approximate {
+                                    Text("Приблизительное положение").font(.caption2).foregroundStyle(.secondary)
+                                }
+                            }
+                        }.disabled(place.point==nil)
                     }
                     if places.isEmpty{Text("Совпадений нет. Измените поиск или выберите все периоды.")}
                 }

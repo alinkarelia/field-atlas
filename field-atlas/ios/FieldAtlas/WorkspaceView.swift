@@ -91,6 +91,7 @@ struct WorkspaceView:View {
     private func selectGeographic(_ coordinate:[Double]){
         guard TerritoryCatalog.validCoordinate(coordinate)else{return}
         if location.origin==nil {
+            guard pendingPoint != nil || marker != nil || (trackKind != nil && location.manual) else{return}
             // A legacy local track has no geographic anchor and must stay local.
             guard location.points.isEmpty else{notice="У этого контура нет географической привязки. Продолжите его на локальном плане.";return}
             let origin=GeoOrigin(lat:coordinate[0],lon:coordinate[1])
