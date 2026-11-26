@@ -8,6 +8,7 @@ struct FieldAssistantResult: Codable {
     let verified: Bool
     let notice: String
     let source_sha256: String?
+    var original_source_sha256:String? = nil
 }
 
 @MainActor final class FieldAssistant: ObservableObject {
@@ -31,9 +32,9 @@ struct FieldAssistantResult: Codable {
                 if let photo {
                     guard let file = store.assetURL(photo.id) else { throw CocoaError(.fileReadNoSuchFile) }
                     let raw = try Data(contentsOf: file)
-                    guard raw.count <= 6 * 1024 * 1024 else { throw SiteTransferError.message("Для x0 нужен снимок до 6 МБ. Оригинал остаётся в карточке; выберите более компактный снимок.") }
-                    guard SiteTransfer.digest(raw) == photo.sha256 else { throw CocoaError(.fileReadCorruptFile) }
-                    payload["image_base64"] = raw.base64EncodedString(); payload["source_sha256"] = photo.sha256
+                    let prepared=try AssistantImage.prepare(raw,hash:photo.sha256)
+                    if prepared.transformed{_ = try store.saveAsset(prepared.data,projectId:project.id,mime:"image/jpeg",extension:"jpg")}
+                    payload["image_base64"] = prepared.data.base64EncodedString();payload["source_sha256"] = prepared.sourceHash
                 }
                 let digest = SiteTransfer.digest(try JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys]))
                 if digest != fingerprint { requestID = UUID().uuidString; fingerprint = digest }
@@ -53,10 +54,11 @@ struct FieldAssistantResult: Codable {
                     if http.statusCode == 422 { throw SiteTransferError.message("Сайт не принял вопрос или снимок. Проверьте выбранное задание и размер фото.") }
                     throw StaffAccountError.http(http.statusCode)
                 }
-                let answer = try JSONDecoder().decode(FieldAssistantResult.self, from: body)
+                var answer = try JSONDecoder().decode(FieldAssistantResult.self, from: body)
                 guard answer.id == requestID, !answer.verified, answer.text.count <= 32000,
                       answer.mode == (photo == nil ? "advice" : "ocr"),
-                      answer.source_sha256 == photo?.sha256 else { throw StaffAccountError.invalidResponse }
+                      answer.source_sha256 == (payload["source_sha256"] as? String) else { throw StaffAccountError.invalidResponse }
+                answer.original_source_sha256=photo?.sha256
                 _ = try store.saveAsset(store.encoder.encode(answer), projectId: project.id, mime: "application/json", extension: "json")
                 result = answer; message = "Ответ сохранён на устройстве."
             } catch is CancellationError { message = "Ожидание остановлено. Сервер мог уже получить запрос." }
@@ -85,7 +87,7 @@ struct FieldAssistantView: View {
                 Section {
                     Label(photo == nil ? "x0 · помощник в поле" : "x0 · чтение надписи", systemImage: "sparkles")
                         .font(.headline)
-                    Text(photo == nil ? "Вопрос по съёмке, качеству данных или следующему действию." : "Будет отправлен только выбранный снимок. Результат нужно сверить с плитой.").font(.footnote)
+                    Text(photo == nil ? "Вопрос по съёмке, качеству данных или следующему действию." : "Будет отправлен выбранный снимок или его копия до 6 МБ для чтения. Оригинал остаётся в карточке. Результат нужно сверить с плитой.").font(.footnote)
                     if let photo, let url = store.assetURL(photo.id), let image = UIImage(contentsOfFile: url.path) {
                         Image(uiImage: image).resizable().scaledToFit().frame(maxHeight: 200)
                     }
@@ -121,7 +123,7 @@ struct FieldAssistantView: View {
                         Text(result.notice).font(.caption).foregroundStyle(.orange)
                         Text(result.text).textSelection(.enabled)
                         if let source = result.source_sha256, let onReading {
-                            Button("Вставить как непроверенное чтение") { onReading(result.text, source); dismiss() }
+                            Button("Вставить как непроверенное чтение") { onReading(result.text, result.original_source_sha256 ?? source); dismiss() }
                         }
                     } else if !assistant.busy {
                         Button("Подготовить новый запрос") { assistant.newAttempt() }.font(.footnote)

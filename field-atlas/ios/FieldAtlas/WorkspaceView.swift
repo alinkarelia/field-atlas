@@ -142,7 +142,7 @@ struct WorkspaceView:View {
                 else{Button{showList=false;DispatchQueue.main.asyncAfter(deadline:.now()+0.3){editing=record}}label:{HStack{Image(systemName:SurveyFeature(rawValue:record.kind)?.symbol ?? "rectangle.stack");VStack(alignment:.leading,spacing:4){Text(record.title.isEmpty ? project.type.objectTitle+" · "+record.id.prefix(6):record.title);Text("\(record.photos.count) фото · "+(record.status=="complete" ? "Собрано":"Черновик")).font(.caption).foregroundStyle(.secondary)}}}}
             }
             if records.isEmpty{Text("Пока нет объектов. Создайте карточку или начните обход на карте.")}
-        }.navigationTitle("Объекты проекта").toolbar{ToolbarItem(placement:.confirmationAction){Button("Готово"){showList=false}};if project.type == .cemetery{ToolbarItem(placement:.bottomBar){Button("Связи с архивом"){showList=false;DispatchQueue.main.asyncAfter(deadline:.now()+0.3){showArchive=true}}}}}
+        }.navigationTitle("Объекты проекта").toolbar{ToolbarItem(placement:.confirmationAction){Button("Готово"){showList=false}};if project.type == .cemetery{ToolbarItem(placement:.bottomBar){Button("Связи с архивом"){showList=false;DispatchQueue.main.asyncAfter(deadline:.now()+0.3){showArchive=true}}}}}}
     }
     private func afterTools(_ action:@escaping()->Void){showTools=false;DispatchQueue.main.asyncAfter(deadline:.now()+0.3,execute:action)}
     private func openTrack(_ kind:String){requestedTrack=kind;showGeo=false;if showTools{afterTools{showTrackOptions=true}}else{showTrackOptions=true}}

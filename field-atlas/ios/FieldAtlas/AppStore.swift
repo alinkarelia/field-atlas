@@ -2,6 +2,8 @@ import Foundation
 import SwiftUI
 import CryptoKit
 import FieldCore
+import ImageIO
+import UniformTypeIdentifiers
 
 struct AssetEntry: Codable, Identifiable {
     var id: String; var projectId: String; var filename: String; var mime: String; var sha256: String; var size: Int; var uploaded=false
@@ -78,8 +80,17 @@ struct AtlasState: Codable {
     }
     func setOrigin(_ origin: GeoOrigin,projectId: String) throws {var next=state;next.origins[projectId]=origin;try persist(next)}
     func assetURL(_ id: String) -> URL? { guard let a=state.assets.first(where:{$0.id==id}) else{return nil};return root.appendingPathComponent("assets").appendingPathComponent(a.filename) }
+    func attachPhoto(_ data:Data,to record:Observation,role:String)throws->Observation {
+        guard ["overview","inscription","portrait","detail"].contains(role),data.count<=100_000_000,
+              let source=CGImageSourceCreateWithData(data as CFData,nil),let raw=CGImageSourceGetType(source) else{throw CocoaError(.fileReadCorruptFile)}
+        let types:[String:(String,String)]=[UTType.jpeg.identifier:("jpg","image/jpeg"),UTType.png.identifier:("png","image/png"),UTType.heic.identifier:("heic","image/heic"),UTType.heif.identifier:("heif","image/heic")]
+        guard let format=types[raw as String] else{throw SiteTransferError.message("Поддерживаются фотографии JPEG, PNG и HEIC. Исходный файл не изменён.")}
+        let asset=try saveAsset(data,projectId:record.projectId,mime:format.1,extension:format.0)
+        var next=record;next.photos.append(PhotoAttachment(id:asset.id,role:role,sha256:asset.sha256,name:asset.filename))
+        try save(next);return next
+    }
     @discardableResult func saveAsset(_ data: Data,projectId: String,mime: String,extension ext: String) throws -> AssetEntry {
-        guard state.projects.contains(where:{$0.id==projectId}),["jpg","png","json","bin","worldmap","usdz","gpx"].contains(ext) else {throw CocoaError(.validationMissingMandatoryProperty)}
+        guard state.projects.contains(where:{$0.id==projectId}),["jpg","png","heic","heif","json","bin","worldmap","usdz","gpx"].contains(ext) else {throw CocoaError(.validationMissingMandatoryProperty)}
         let id=UUID().uuidString,filename="\(id).\(ext)";let sha=SHA256.hash(data:data).map{String(format:"%02x",$0)}.joined()
         let a=AssetEntry(id:id,projectId:projectId,filename:filename,mime:mime,sha256:sha,size:data.count)
         try data.write(to:root.appendingPathComponent("assets").appendingPathComponent(filename),options:[.atomic,.completeFileProtectionUntilFirstUserAuthentication])

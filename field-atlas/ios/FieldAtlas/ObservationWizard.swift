@@ -127,10 +127,7 @@ struct ObservationWizard:View {
         }.padding(.vertical,8)
     }
     private func savePhotoData(_ data:Data,role:String)throws {
-        guard data.count<=100_000_000,let source=CGImageSourceCreateWithData(data as CFData,nil),let raw=CGImageSourceGetType(source),let type=UTType(raw as String),type.conforms(to:.image) else{throw CocoaError(.fileReadCorruptFile)}
-        let asset=try store.saveAsset(data,projectId:project.id,mime:type.preferredMIMEType ?? "image/jpeg",extension:type.preferredFilenameExtension ?? "jpg")
-        var next=draft;next.photos.append(PhotoAttachment(id:asset.id,role:role,sha256:asset.sha256,name:asset.filename))
-        try store.save(next);draft=next;notice="Фото «\(["overview":"Общий вид","inscription":"Плита или табличка","portrait":"Портрет","detail":"Деталь"][role] ?? role)» сохранено. Можно снять следующий вид."
+        draft=try store.attachPhoto(data,to:draft,role:role);notice="Фото «\(["overview":"Общий вид","inscription":"Плита или табличка","portrait":"Портрет","detail":"Деталь"][role] ?? role)» сохранено. Можно снять следующий вид."
     }
     private func readLocally()async{
         guard let photo=draft.photos.last(where:{$0.role=="inscription"}),let file=store.assetURL(photo.id),let image=UIImage(contentsOfFile:file.path)?.cgImage else{notice="Сначала снимите надпись";return}
