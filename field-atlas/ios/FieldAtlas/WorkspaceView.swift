@@ -44,7 +44,7 @@ struct WorkspaceView:View {
     private func trackTitle(_ kind:String)->String{kind=="boundary" ? "Граница":kind=="road" ? "Дорога":"Тропинка"}
     var body:some View {
         ZStack(alignment:.top) {
-            if showGeo && project.type.outdoor {MapLibrePlan(records:records,origin:store.state.origins[project.id],catalog:territory.catalog,mapURL:territory.mapURL,track:location.segments,currentPosition:location.freshPosition,centerRequest:centerRequest,zoomRequest:geoZoom,fitRequest:geoFit,selectedPlace:selectedPlace,onPick:selectGeographic,onSite:{sitePlace=$0},onScale:{if geoScale != $0{geoScale=$0}}).ignoresSafeArea(edges:.bottom)}
+            if showGeo && project.type.outdoor {MapLibrePlan(records:records,origin:store.state.origins[project.id],catalog:territory.catalog,mapURL:territory.mapURL,track:location.segments,currentPosition:location.freshPosition,centerRequest:centerRequest,zoomRequest:geoZoom,fitRequest:geoFit,selectedPlace:selectedPlace,placing:busyMap,onPick:selectGeographic,onSite:{sitePlace=$0},onRecord:{id in editing=objects.first{$0.id==id}},onScale:{if geoScale != $0{geoScale=$0}}).ignoresSafeArea(edges:.bottom)}
             else{LocalPlan(records:records,track:location.segments,currentPosition:location.freshPosition,centerRequest:centerRequest,onPick:selectPoint).ignoresSafeArea(edges:.bottom)}
             VStack(spacing:8) {
                 header
@@ -80,13 +80,13 @@ struct WorkspaceView:View {
     }
     private var geoControls:some View {
         HStack(alignment:.top){
-            VStack(alignment:.leading,spacing:4){Button{showTerritory=true}label:{Label("Карта и места",systemImage:"map").font(.subheadline).padding(12).background(.regularMaterial,in:Capsule())}.accessibilityIdentifier("workspace-territory")
+            if !busyMap {VStack(alignment:.leading,spacing:4){Button{showTerritory=true}label:{Label("Карта и места",systemImage:"map").font(.subheadline).padding(12).background(.regularMaterial,in:Capsule())}.accessibilityIdentifier("workspace-territory")
                 Text(store.state.origins[project.id].map{territory.catalog?.contains($0)==true ? "Карта сохранена · без связи":"За пределами сохранённой карты"} ?? "Обзор округа · GPS ещё не определён").font(.caption2).padding(6).background(.regularMaterial,in:Capsule())
                 Text("© OpenStreetMap · ODbL").font(.system(size:10)).padding(4).background(.regularMaterial,in:Capsule())
-            }
+            }}
             Spacer()
             VStack(spacing:4){Button{geoZoom+=1}label:{Image(systemName:"plus").frame(width:44,height:44)}.accessibilityLabel("Приблизить").accessibilityIdentifier("map-zoom-in");Button{geoZoom-=1}label:{Image(systemName:"minus").frame(width:44,height:44)}.accessibilityLabel("Отдалить").accessibilityIdentifier("map-zoom-out");Button{geoFit=UUID()}label:{Image(systemName:"arrow.up.left.and.arrow.down.right").frame(width:44,height:44)}.accessibilityLabel("Показать весь план").accessibilityIdentifier("map-fit")}.background(.regularMaterial,in:Capsule())
-        }.overlay(alignment:.bottomLeading){Text(geoScale).font(.caption2).padding(6).background(.regularMaterial,in:Capsule()).offset(y:28).accessibilityIdentifier("map-scale")}.padding(.horizontal,16)
+        }.overlay(alignment:.bottomLeading){if !busyMap{Text(geoScale).font(.caption2).padding(6).background(.regularMaterial,in:Capsule()).offset(y:28).allowsHitTesting(false).accessibilityIdentifier("map-scale")}}.padding(.horizontal,16)
     }
     private func selectGeographic(_ coordinate:[Double]){
         guard TerritoryCatalog.validCoordinate(coordinate)else{return}
@@ -201,3 +201,4 @@ struct WorkspaceView:View {
         do{try store.save(value);try store.clearTrack(project.id);location.stop();location.points=[];location.segments=[];trackKind=nil;notice=value.title+" сохранена. Можно добавлять карточки, пути и метки."}catch{notice=error.localizedDescription}
     }
 }
+

@@ -134,7 +134,12 @@ final class FieldAtlasUITests: XCTestCase {
             tap(app.buttons["workspace-"+kind]);tap(app.buttons["track-start-manual"])
             let map=app.otherElements["survey-map"].firstMatch
             let points=kind=="boundary" ? [CGVector(dx:0.3,dy:0.34),CGVector(dx:0.7,dy:0.34),CGVector(dx:0.7,dy:0.46),CGVector(dx:0.3,dy:0.46)] : [CGVector(dx:0.4,dy:0.35),CGVector(dx:0.6,dy:0.43)]
-            for point in points{map.coordinate(withNormalizedOffset:point).tap()}
+            for (index,point) in points.enumerated(){
+                map.coordinate(withNormalizedOffset:point).tap()
+                let count=app.staticTexts["track-count"]
+                let updated=NSPredicate(format:"label == %@","\(index+1) точек")
+                XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:updated,object:count)],timeout:5),.completed,"Every map tap must add exactly one vertex")
+            }
             XCTAssertEqual(app.staticTexts["track-count"].label,"\(points.count) точек")
             capture("manual-"+kind);tap(app.buttons["track-save"])
             XCTAssertTrue(app.buttons["workspace-add"].isEnabled)
@@ -192,3 +197,4 @@ final class FieldAtlasUITests: XCTestCase {
         capture("shared-territory-offline")
     }
 }
+

@@ -9,23 +9,28 @@ struct MapLibrePlan:UIViewRepresentable {
     var track:[[[Double]]]=[];var currentPosition:[Double]?=nil
     var centerRequest=UUID();var zoomRequest=0;var fitRequest=UUID()
     var selectedPlace:TerritoryPlace?=nil
+    var placing=false
     var onPick:(([Double])->Void)?=nil;var onSite:((TerritoryPlace)->Void)?=nil
+    var onRecord:((String)->Void)?=nil
     var onScale:((String)->Void)?=nil
     func makeCoordinator()->Coordinator{Coordinator(self)}
     func makeUIView(context:Context)->MLNMapView {
-        let map=MLNMapView(frame:.zero,styleURL:Bundle.main.url(forResource:"map-style",withExtension:"json"))
+        let map=SurveyMapView(frame:.zero,styleURL:Bundle.main.url(forResource:"map-style",withExtension:"json"))
         map.delegate=context.coordinator;map.accessibilityIdentifier="survey-map"
+        map.onLayout={ [weak coordinator=context.coordinator] map in coordinator?.fitInitial(map) }
         map.logoView.isHidden=true;map.attributionButton.isHidden=true
         let tap=UITapGestureRecognizer(target:context.coordinator,action:#selector(Coordinator.tap(_:)))
         tap.cancelsTouchesInView=false
+        tap.delegate=context.coordinator
         for gesture in map.gestureRecognizers ?? [] {if let existing=gesture as? UITapGestureRecognizer,existing.numberOfTapsRequired==2{tap.require(toFail:existing)}}
         map.addGestureRecognizer(tap)
-        context.coordinator.map=map;context.coordinator.fit(map)
+        context.coordinator.map=map
         return map
     }
     func updateUIView(_ map:MLNMapView,context:Context){
         let c=context.coordinator,old=c.parent;c.parent=self
         if old.mapURL != mapURL{c.installBase(map)}
+        c.fitInitial(map)
         if old.fitRequest != fitRequest{c.fit(map)}
         if old.zoomRequest != zoomRequest{map.setZoomLevel(map.zoomLevel+Double(zoomRequest-old.zoomRequest),animated:false)}
         if old.centerRequest != centerRequest,let p=currentPosition,let coordinate=SurveyGeography.coordinate(p,origin:origin){map.setCenter(coordinate,zoomLevel:max(map.zoomLevel,17),animated:false)}
@@ -33,24 +38,39 @@ struct MapLibrePlan:UIViewRepresentable {
         if old.selectedPlace?.id != selectedPlace?.id,let p=selectedPlace?.point{map.setCenter(CLLocationCoordinate2D(latitude:p[0],longitude:p[1]),zoomLevel:16,animated:false)}
         c.refresh(map)
     }
-    final class Coordinator:NSObject,MLNMapViewDelegate {
+    final class Coordinator:NSObject,MLNMapViewDelegate,UIGestureRecognizerDelegate {
         var parent:MapLibrePlan;weak var map:MLNMapView?
         var towns:[(String,CLLocationCoordinate2D)]=[]
+        var initializedCamera=false
         init(_ parent:MapLibrePlan){self.parent=parent}
         @objc func tap(_ gesture:UITapGestureRecognizer){
             guard gesture.state == .ended,let map else{return}
             let point=gesture.location(in:map)
             // Annotation selection has its own action; do not simultaneously place a field point.
-            if let hit=map.hitTest(point,with:nil),hit is MLNAnnotationView || hit.superview is MLNAnnotationView{return}
+            if !parent.placing,let hit=map.hitTest(point,with:nil),hit is MLNAnnotationView || hit.superview is MLNAnnotationView{return}
             let coordinate=map.convert(point,toCoordinateFrom:map)
             if CLLocationCoordinate2DIsValid(coordinate){parent.onPick?([coordinate.latitude,coordinate.longitude])}
         }
+        func gestureRecognizer(_ gestureRecognizer:UIGestureRecognizer,shouldRecognizeSimultaneouslyWith otherGestureRecognizer:UIGestureRecognizer)->Bool {
+            parent.placing && gestureRecognizer is UITapGestureRecognizer && otherGestureRecognizer is UITapGestureRecognizer
+        }
+        func fitInitial(_ map:MLNMapView){
+            guard !initializedCamera,map.bounds.width>1,map.bounds.height>1,map.style != nil,parent.catalog != nil || parent.origin != nil else{return}
+            initializedCamera=true;fit(map)
+        }
         func fit(_ map:MLNMapView){
-            if let origin=parent.origin{map.setCenter(CLLocationCoordinate2D(latitude:origin.lat,longitude:origin.lon),zoomLevel:17,animated:false)}
+            let coordinates=parent.records.flatMap{record in ([record.point].compactMap{$0}+record.points+record.segments.flatMap{$0}).compactMap{SurveyGeography.coordinate($0,origin:record.origin)}} + parent.track.flatMap{$0}.compactMap{SurveyGeography.coordinate($0,origin:parent.origin)}
+            if let first=coordinates.first {
+                let latitudes=coordinates.map(\.latitude),longitudes=coordinates.map(\.longitude)
+                let sw=CLLocationCoordinate2D(latitude:latitudes.min()!,longitude:longitudes.min()!),ne=CLLocationCoordinate2D(latitude:latitudes.max()!,longitude:longitudes.max()!)
+                if abs(sw.latitude-ne.latitude)+abs(sw.longitude-ne.longitude)<0.00001{map.setCenter(first,zoomLevel:18,animated:false)}
+                else{map.setVisibleCoordinateBounds(MLNCoordinateBounds(sw:sw,ne:ne),edgePadding:UIEdgeInsets(top:150,left:50,bottom:260,right:65),animated:false)}
+            }
+            else if let origin=parent.origin{map.setCenter(CLLocationCoordinate2D(latitude:origin.lat,longitude:origin.lon),zoomLevel:17,animated:false)}
             else if let b=parent.catalog?.bounds,b.count==2 {map.setVisibleCoordinateBounds(MLNCoordinateBounds(sw:CLLocationCoordinate2D(latitude:b[0][0],longitude:b[0][1]),ne:CLLocationCoordinate2D(latitude:b[1][0],longitude:b[1][1])),edgePadding:UIEdgeInsets(top:110,left:30,bottom:240,right:30),animated:false)}
             else{map.setCenter(CLLocationCoordinate2D(latitude:61.02,longitude:36.74),zoomLevel:8,animated:false)}
         }
-        func mapView(_ mapView:MLNMapView,didFinishLoading style:MLNStyle){installBase(mapView);refresh(mapView)}
+        func mapView(_ mapView:MLNMapView,didFinishLoading style:MLNStyle){installBase(mapView);fitInitial(mapView);refresh(mapView)}
         func installBase(_ map:MLNMapView){
             guard let style=map.style,let url=parent.mapURL else{return}
             for name in ["boundary","water","green","road","building"]{if let layer=style.layer(withIdentifier:"territory-"+name){style.removeLayer(layer)}}
@@ -75,7 +95,7 @@ struct MapLibrePlan:UIViewRepresentable {
             for record in parent.records {
                 guard let recordOrigin=record.origin else{continue}
                 func coordinate(_ point:[Double])->CLLocationCoordinate2D?{SurveyGeography.coordinate(point,origin:recordOrigin)}
-                if let point=record.point,let location=coordinate(point){let a=TerritoryAnnotation();a.coordinate=location;a.title=record.title.isEmpty ? "Полевой объект":record.title;a.kind="field";map.addAnnotation(a)}
+                if let point=record.point,let location=coordinate(point){let a=TerritoryAnnotation();a.coordinate=location;a.title=record.title.isEmpty ? "Полевой объект":record.title;a.kind="field";a.recordID=record.id;map.addAnnotation(a)}
                 for part in (record.kind=="boundary" || record.segments.isEmpty ? [record.points]:record.segments) where part.count>=2 {
                     var coords=part.compactMap(coordinate);guard coords.count==part.count else{continue}
                     if record.kind=="boundary"{map.addAnnotation(MLNPolygon(coordinates:&coords,count:UInt(coords.count)))}
@@ -92,6 +112,7 @@ struct MapLibrePlan:UIViewRepresentable {
             if map.zoomLevel>=12 {
                 for p in parent.catalog?.places ?? []{guard let point=p.point else{continue};let coordinate=CLLocationCoordinate2D(latitude:point[0],longitude:point[1]);guard map.bounds.contains(map.convert(coordinate,toPointTo:map))else{continue};let a=TerritoryAnnotation();a.coordinate=coordinate;a.title=p.name;a.siteID=p.id;a.kind="site";map.addAnnotation(a)}
             }
+            guard initializedCamera else{return}
             let meters=map.metersPerPoint(atLatitude:map.centerCoordinate.latitude)*100
             let label=meters>=1000 ? String(format:"100 пт ≈ %.1f км",meters/1000):String(format:"100 пт ≈ %.0f м",meters)
             DispatchQueue.main.async{[weak self] in self?.parent.onScale?(label)}
@@ -104,16 +125,20 @@ struct MapLibrePlan:UIViewRepresentable {
             view.addSubview(label);view.isAccessibilityElement=item.kind != "town";view.accessibilityLabel=item.title;return view
         }
         func mapView(_ mapView:MLNMapView,didSelect annotation:MLNAnnotation){
-            guard let item=annotation as? TerritoryAnnotation else{return}
+            guard !parent.placing,let item=annotation as? TerritoryAnnotation else{return}
             if let id=item.siteID,let p=parent.catalog?.places.first(where:{$0.id==id}){parent.onSite?(p)}
-            else if item.kind=="field"{parent.onPick?([item.coordinate.latitude,item.coordinate.longitude])}
+            else if let id=item.recordID{parent.onRecord?(id)}
         }
         func mapView(_ mapView:MLNMapView,strokeColorForShapeAnnotation annotation:MLNShape)->UIColor{UIColor(red:0.05,green:0.4,blue:0.28,alpha:1)}
         func mapView(_ mapView:MLNMapView,lineWidthForPolylineAnnotation annotation:MLNPolyline)->CGFloat{4}
         func mapView(_ mapView:MLNMapView,fillColorForPolygonAnnotation annotation:MLNPolygon)->UIColor{UIColor(red:0.25,green:0.5,blue:0.3,alpha:0.22)}
     }
 }
-final class TerritoryAnnotation:MLNPointAnnotation {var kind="site";var siteID:String?}
+final class SurveyMapView:MLNMapView {
+    var onLayout:((MLNMapView)->Void)?
+    override func layoutSubviews(){super.layoutSubviews();onLayout?(self)}
+}
+final class TerritoryAnnotation:MLNPointAnnotation {var kind="site";var siteID:String?;var recordID:String?}
 
 enum SurveyGeography {
     static func coordinate(_ point:[Double],origin:GeoOrigin?)->CLLocationCoordinate2D? {
@@ -122,3 +147,4 @@ enum SurveyGeography {
         return CLLocationCoordinate2DIsValid(value) ? value:nil
     }
 }
+
