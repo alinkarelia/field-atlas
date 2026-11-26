@@ -180,4 +180,15 @@ final class FieldAtlasUITests: XCTestCase {
         tap(app.buttons["К работе"]);tap(app.buttons["Свернуть"]);tap(app.buttons["workspace-objects"])
         XCTAssertTrue(app.buttons.matching(NSPredicate(format:"label CONTAINS %@","3 фото")).firstMatch.exists)
     }
+    func testSharedTerritoryAvailableWithoutSignIn(){
+        create("cemetery","Общая карта")
+        tap(app.buttons["workspace-territory"])
+        XCTAssertTrue(app.staticTexts["territory-status"].waitForExistence(timeout:8))
+        XCTAssertTrue(app.staticTexts["territory-status"].label.contains("без интернета"))
+        let search=app.searchFields.firstMatch;tap(search);search.typeText("Первая ГЭС")
+        let place=app.buttons.matching(NSPredicate(format:"label CONTAINS %@","Первая ГЭС")).firstMatch
+        revealList(place);tap(place)
+        XCTAssertTrue(app.buttons["workspace-territory"].waitForExistence(timeout:8))
+        capture("shared-territory-offline")
+    }
 }

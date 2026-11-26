@@ -2,7 +2,7 @@ import Foundation
 import CoreLocation
 import FieldCore
 
-struct TrackSnapshot:Codable {var kind:String;var points:[[Double]];var segments:[[[Double]]];var needsReview:Bool;var manual:Bool?=nil}
+struct TrackSnapshot:Codable {var kind:String;var points:[[Double]];var segments:[[[Double]]];var needsReview:Bool;var manual:Bool?=nil;var origin:GeoOrigin?=nil}
 
 @MainActor final class LocationRecorder: NSObject,ObservableObject,CLLocationManagerDelegate {
     @Published var position: [Double]?; @Published var positionTime:Date?; @Published var accuracy: Double?; @Published var message="Положение не определено"
@@ -14,7 +14,7 @@ struct TrackSnapshot:Codable {var kind:String;var points:[[Double]];var segments
     private let manager=CLLocationManager();private var last: CLLocation?;private var breakNext=false
     override init(){super.init();manager.delegate=self;manager.desiredAccuracy=kCLLocationAccuracyBest;manager.distanceFilter=0.7}
     func locate(){manager.requestWhenInUseAuthorization();manager.startUpdatingLocation()}
-    func restore(_ snapshot:TrackSnapshot){points=snapshot.points;segments=snapshot.segments;needsReview=snapshot.needsReview;manual=snapshot.manual ?? false;paused = !manual;recording=true;breakNext=true;last=nil;message=manual ? "Ручной контур восстановлен · добавляйте точки на плане":"Сохранённый обход · продолжите запись"}
+    func restore(_ snapshot:TrackSnapshot){if let savedOrigin=snapshot.origin{origin=savedOrigin};points=snapshot.points;segments=snapshot.segments;needsReview=snapshot.needsReview;manual=snapshot.manual ?? false;paused = !manual;recording=true;breakNext=true;last=nil;message=manual ? "Ручной контур восстановлен · добавляйте точки на плане":"Сохранённый обход · продолжите запись"}
     func begin(manual:Bool=false){self.manual=manual;breakNext=false;points=[];segments=[[]];last=nil;needsReview=manual;recording=true;paused=false;if manual{manager.stopUpdatingLocation();message="Касайтесь плана, добавляя углы по порядку"}else{locate()}}
     func addManual(_ point:[Double]){guard manual,recording,point.count==2,point.allSatisfy(\.isFinite) else{return};if let last=points.last,hypot(last[0]-point[0],last[1]-point[1])<0.05{return};points.append(point);segments=[points];trackChanged?()}
     func pause(){paused.toggle();if !paused{breakNext=true;needsReview=true;locate()};trackChanged?()}
@@ -33,6 +33,7 @@ struct TrackSnapshot:Codable {var kind:String;var points:[[Double]];var segments
     func locationManager(_ manager: CLLocationManager,didUpdateLocations locations: [CLLocation]){
         guard let value=locations.last,value.horizontalAccuracy>=0,abs(value.timestamp.timeIntervalSinceNow)<10 else{return}
         accuracy=value.horizontalAccuracy
+        if origin == nil && recording && manual && !points.isEmpty {message="Локальный контур не привязан к GPS";return}
         if origin == nil && value.horizontalAccuracy<=20 {origin=GeoOrigin(lat:value.coordinate.latitude,lon:value.coordinate.longitude);originChanged?(origin!)}
         guard let origin else{return};positionTime=value.timestamp;position=Geometry.local(lat:value.coordinate.latitude,lon:value.coordinate.longitude,origin:origin)
         message="GPS ±\(Int(value.horizontalAccuracy)) м"
