@@ -3,6 +3,20 @@ import Foundation
 /// Clips a diagonal survey hatch to the actual wall outline, excluding openings.
 /// Coordinates are in metres in the surface's own XY plane.
 public enum SurfaceHatching {
+    /// Finite-width triangles stay visible from both sides of a wall. Input lines are already clipped.
+    public static func ribbons(lines: [[[Double]]], width: Double) -> (vertices: [[Double]], indices: [UInt32]) {
+        guard width.isFinite, width > 0, width <= 0.1 else { return ([],[]) }
+        var vertices:[[Double]]=[]; var indices:[UInt32]=[]
+        for line in lines.prefix(10000) {
+            guard line.count==2, line.allSatisfy({$0.count==2 && $0.allSatisfy(\.isFinite)}) else{continue}
+            let a=line[0], b=line[1], dx=b[0]-a[0], dy=b[1]-a[1], length=hypot(dx,dy)
+            guard length>0.001 else{continue}
+            let nx = -dy/length*width/2, ny=dx/length*width/2, i=UInt32(vertices.count)
+            vertices += [[a[0]+nx,a[1]+ny],[a[0]-nx,a[1]-ny],[b[0]+nx,b[1]+ny],[b[0]-nx,b[1]-ny]]
+            indices += [i,i+1,i+2,i+2,i+1,i+3]
+        }
+        return (vertices,indices)
+    }
     public static func segments(outline: [[Double]], holes: [[[Double]]] = [], spacing: Double = 0.18) -> [[[Double]]] {
         guard outline.count >= 3, outline.allSatisfy({ $0.count == 2 && $0.allSatisfy(\.isFinite) }),
               spacing.isFinite, spacing > 0 else { return [] }

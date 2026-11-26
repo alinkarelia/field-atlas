@@ -32,6 +32,7 @@ struct LocalPlan: View {
                 Canvas { context,size in draw(&context,size:size,view:view,step:step) }
                     .contentShape(Rectangle())
                     .accessibilityLabel("План участка")
+                    .accessibilityIdentifier("survey-map")
                     .gesture(DragGesture(minimumDistance:6)
                         .updating($translation) { value,state,_ in state=value.translation }
                         .onEnded { value in viewport.pan(x:value.translation.width,y:value.translation.height) })
@@ -95,14 +96,20 @@ struct LocalPlan: View {
             }
             if let value=record.point,value.count==2 {
                 let q=point(value),rect=CGRect(x:q.x-6,y:q.y-9,width:12,height:18)
-                let path=record.kind=="tree" ? Path(ellipseIn:rect):Path(roundedRect:rect,cornerRadius:3)
-                context.fill(path,with:.color(record.kind=="tree" ? .green.opacity(0.35):.white))
-                context.stroke(path,with:.color(Palette.green.opacity(0.6)),lineWidth:1)
+                let path=Path(ellipseIn:rect.insetBy(dx:-7,dy:-4))
+                context.fill(path,with:.color(.white))
+                context.stroke(path,with:.color(record.kind=="anomaly" ? .orange:Palette.green),lineWidth:1.5)
+                let icon=Image(systemName:SurveyFeature(rawValue:record.kind)?.symbol ?? "rectangle.portrait.fill")
+                context.draw(context.resolve(icon),in:CGRect(x:q.x-8,y:q.y-9,width:16,height:16))
             }
         }
         for segment in track where segment.count>1 {
             var path=Path();path.addLines(segment.filter{$0.count>=2}.map(point))
             context.stroke(path,with:.color(Palette.green),style:StrokeStyle(lineWidth:2,dash:[5,3]))
+        }
+        for value in track.flatMap({$0}) where value.count==2 {
+            let p=point(value)
+            context.fill(Path(ellipseIn:CGRect(x:p.x-4,y:p.y-4,width:8,height:8)),with:.color(Palette.green))
         }
     }
 }

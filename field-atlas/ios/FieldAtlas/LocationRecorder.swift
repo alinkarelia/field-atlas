@@ -2,19 +2,21 @@ import Foundation
 import CoreLocation
 import FieldCore
 
-struct TrackSnapshot:Codable {var kind:String;var points:[[Double]];var segments:[[[Double]]];var needsReview:Bool}
+struct TrackSnapshot:Codable {var kind:String;var points:[[Double]];var segments:[[[Double]]];var needsReview:Bool;var manual:Bool?=nil}
 
 @MainActor final class LocationRecorder: NSObject,ObservableObject,CLLocationManagerDelegate {
     @Published var position: [Double]?; @Published var positionTime:Date?; @Published var accuracy: Double?; @Published var message="Положение не определено"
     @Published var points: [[Double]]=[]; @Published var segments: [[[Double]]]=[]
     @Published var recording=false; @Published var paused=false; @Published var needsReview=false
+    @Published var manual=false
     var trackChanged:(()->Void)?
     var origin: GeoOrigin?;var originChanged: ((GeoOrigin)->Void)?
     private let manager=CLLocationManager();private var last: CLLocation?;private var breakNext=false
     override init(){super.init();manager.delegate=self;manager.desiredAccuracy=kCLLocationAccuracyBest;manager.distanceFilter=0.7}
     func locate(){manager.requestWhenInUseAuthorization();manager.startUpdatingLocation()}
-    func restore(_ snapshot:TrackSnapshot){points=snapshot.points;segments=snapshot.segments;needsReview=snapshot.needsReview;paused=true;recording=true;breakNext=true;last=nil;message="Сохранённый обход · продолжите запись"}
-    func begin(){breakNext=false;points=[];segments=[[]];last=nil;needsReview=false;recording=true;paused=false;locate()}
+    func restore(_ snapshot:TrackSnapshot){points=snapshot.points;segments=snapshot.segments;needsReview=snapshot.needsReview;manual=snapshot.manual ?? false;paused = !manual;recording=true;breakNext=true;last=nil;message=manual ? "Ручной контур восстановлен · добавляйте точки на плане":"Сохранённый обход · продолжите запись"}
+    func begin(manual:Bool=false){self.manual=manual;breakNext=false;points=[];segments=[[]];last=nil;needsReview=manual;recording=true;paused=false;if manual{manager.stopUpdatingLocation();message="Касайтесь плана, добавляя углы по порядку"}else{locate()}}
+    func addManual(_ point:[Double]){guard manual,recording,point.count==2,point.allSatisfy(\.isFinite) else{return};if let last=points.last,hypot(last[0]-point[0],last[1]-point[1])<0.05{return};points.append(point);segments=[points];trackChanged?()}
     func pause(){paused.toggle();if !paused{breakNext=true;needsReview=true;locate()};trackChanged?()}
     var freshPosition:[Double]?{guard let time=positionTime,Date().timeIntervalSince(time)<30,let accuracy,accuracy<=20 else{return nil};return position}
     func undo(){
@@ -34,7 +36,7 @@ struct TrackSnapshot:Codable {var kind:String;var points:[[Double]];var segments
         if origin == nil && value.horizontalAccuracy<=20 {origin=GeoOrigin(lat:value.coordinate.latitude,lon:value.coordinate.longitude);originChanged?(origin!)}
         guard let origin else{return};positionTime=value.timestamp;position=Geometry.local(lat:value.coordinate.latitude,lon:value.coordinate.longitude,origin:origin)
         message="GPS ±\(Int(value.horizontalAccuracy)) м"
-        guard recording,!paused,let position else{return}
+        guard recording,!manual,!paused,let position else{return}
         guard value.horizontalAccuracy<=12 else{needsReview=true;breakNext=true;trackChanged?();return}
         if let previous=last,!breakNext {
             let dt=value.timestamp.timeIntervalSince(previous.timestamp)

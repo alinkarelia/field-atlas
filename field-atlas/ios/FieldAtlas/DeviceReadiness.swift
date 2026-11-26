@@ -28,38 +28,53 @@ import FieldCore
 struct CapturePreparationScreen:View {
     @EnvironmentObject var store:AppStore
     @Environment(\.dismiss) var dismiss
+    @Environment(\.scenePhase) var phase
     let project:FieldProject
     var onMeasurement:(([[Double]],Double,String)->Void)?=nil
     var onCeiling:((CeilingMeasurement)throws->Void)?=nil
     @StateObject private var health=DeviceReadiness()
     @State private var started=false
+    @State private var checking=true
     private var supported:Bool{ARWorldTrackingConfiguration.supportsFrameSemantics(.sceneDepth) && (project.type != .interior || onMeasurement != nil || onCeiling != nil || RoomCaptureSession.isSupported)}
-    var body:some View{
-        Group{
-            if started{
-                if let onCeiling{CeilingCaptureScreen(onSave:onCeiling)}else if project.type == .interior && onMeasurement == nil{InteriorCaptureScreen(project:project)}else{CaptureScreen(project:project,onMeasurement:onMeasurement)}
-            }else{
-                NavigationStack{List{
-                    Section("Съёмка на этом устройстве"){
-                        LabeledContent("LiDAR",value:supported ? "Доступен":"Недоступен")
-                        LabeledContent("Движение и камера",value:"Совместная привязка ARKit")
-                        LabeledContent("Камера",value:health.camera == .authorized ? "Разрешена":health.camera == .notDetermined ? "Запрос при старте":"Разрешите в настройках")
-                        LabeledContent("Свободно",value:health.freeBytes.map{ByteCountFormatter.string(fromByteCount:$0,countStyle:.file)} ?? "Не удалось проверить")
-                        LabeledContent("Заряд",value:health.battery>=0 ? "\(Int(health.battery*100))%":"Неизвестен")
-                        LabeledContent("Нагрев",value:health.thermal == .nominal ? "Нормальный":health.thermal == .fair ? "Повышенный":"Нужна пауза")
-                    }
-                    Section{
-                        if let reason=health.stopReason{Text(reason).foregroundStyle(.orange)}
-                        if health.battery>=0 && health.battery<0.15{Text("Низкий заряд. Сохраняйте короткими частями; по возможности подключите питание.").foregroundStyle(.orange)}
-                        Text(project.type == .interior ? "В помещении используются камера, LiDAR и датчики движения. Этаж можно указать вручную или включить подсказки барометра. GPS не задаёт размеры комнаты.":"GPS используется для карты с учётом погрешности. Геометрию скана удерживают ARKit и LiDAR; привязка скана к карте выполняется отдельно.")
-                    }
-                    Section{
-                        Button("Начать съёмку"){Task{if health.camera == .notDetermined{_ = await AVCaptureDevice.requestAccess(for:.video)};health.refresh(store.root);if health.camera == .authorized && health.stopReason==nil{started=true}}}.disabled(!supported || health.stopReason != nil || health.camera == .denied || health.camera == .restricted).accessibilityIdentifier("capture-start")
-                        if health.camera == .denied{Button("Настройки камеры"){if let url=URL(string:UIApplication.openSettingsURLString){UIApplication.shared.open(url)}}}
-                    }
-                }.navigationTitle("Готовность к съёмке").toolbar{Button("Закрыть"){dismiss()}}}
+    private var blocked:String {
+        if !supported{return "На этом устройстве нет доступного LiDAR. Карта, фотографии и карточки работают отдельно от 3D-съёмки."}
+        if health.camera != .authorized{return "Разрешите доступ к камере в настройках, затем вернитесь сюда."}
+        return health.stopReason ?? "Камера готовится к работе"
+    }
+    var body:some View {
+        Group {
+            if started {
+                if let onCeiling{CeilingCaptureScreen(onSave:onCeiling)}
+                else if project.type == .interior && onMeasurement == nil{InteriorCaptureScreen(project:project)}
+                else{CaptureScreen(project:project,onMeasurement:onMeasurement)}
+            } else {
+                ZStack {
+                    Color.black.ignoresSafeArea()
+                    VStack(spacing:20) {
+                        if checking {ProgressView().tint(.white)}
+                        else {
+                            Image(systemName:supported ? "camera.fill":"viewfinder").font(.largeTitle)
+                            Text(supported ? "Камера недоступна":"LiDAR недоступен").font(.title2.bold()).accessibilityIdentifier("capture-unavailable")
+                            Text(blocked).multilineTextAlignment(.center)
+                            if supported && health.camera == .denied {Button("Открыть настройки"){if let url=URL(string:UIApplication.openSettingsURLString){UIApplication.shared.open(url)}}.buttonStyle(.borderedProminent)}
+                            if supported && health.camera == .authorized {Button("Проверить снова"){Task{await enter()}}.buttonStyle(.bordered)}
+                        }
+                    }.padding(32).frame(maxWidth:480).foregroundStyle(.white)
+                    VStack{HStack{CaptureTool(symbol:"xmark",label:"Закрыть",id:"capture-close"){dismiss()};Spacer()};Spacer()}.padding(16)
+                }
             }
-        }.environmentObject(health).task{await health.monitor(store.root)}
+        }.environmentObject(health).statusBarHidden(true).persistentSystemOverlays(.hidden)
+        .task {await enter()}
+        .task {await health.monitor(store.root)}
+        .onChange(of:phase){_,value in if value == .active && !started{Task{await enter()}}}
+    }
+    private func enter()async {
+        checking=true;defer{checking=false}
+        health.refresh(store.root)
+        guard supported else{return}
+        if health.camera == .notDetermined{_ = await AVCaptureDevice.requestAccess(for:.video)}
+        health.refresh(store.root)
+        started=health.camera == .authorized && health.stopReason == nil
     }
 }
 

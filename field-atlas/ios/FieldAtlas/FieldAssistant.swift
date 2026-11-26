@@ -91,7 +91,8 @@ struct FieldAssistantView: View {
                     }
                     if !context.isEmpty { DisclosureGroup("Контекст для x0") { Text(context).font(.caption) } }
                 }
-                Section("Подключение") {
+                Section("1 · Подключить ответ x0") {
+                    Text("Войдите в учётную запись сайта, выберите доступное вам задание и включите рабочее положение ниже. Это условия доступа сайта. Без подключения карта, карточки и фотографии работают локально.").font(.footnote).foregroundStyle(.secondary)
                     Button(account.context?.user.displayName ?? "Войти через сайт") { showAccount = true }
                     if let tasks = account.context?.tasks {
                         Picker("Задание", selection: $taskID) {
@@ -101,15 +102,16 @@ struct FieldAssistantView: View {
                     }
                 }
                 WebsiteWorkLocationSection()
-                Section("Запрос") {
+                Section("2 · Вопрос и выбранные материалы") {
                     TextField("Что нужно проверить?", text: $question, axis: .vertical).lineLimit(3...7)
                     if photo == nil {
+                        Button("Что делать дальше на кладбище?") { question = "Объясни следующий шаг работы на кладбище по контексту: граница, пути, метки, карточка захоронения и фотографии." }
                         Button("Как доснять пропущенный участок?") { question = "Как доснять пропущенный участок и обеспечить перекрытие с соседним сектором?" }
                         Button("Как прочитать стёртую надпись?") { question = "Как безопасно снять плохо читаемую могильную плиту, не повреждая её?" }
                     }
                     Toggle("Отправить выбранный вопрос и материалы x0", isOn: $consent)
                     Button("Спросить x0") { assistant.ask(question: question, context: context, taskID: taskID, photo: photo, project: project, store: store, account: account) }
-                        .disabled(assistant.busy || !consent || taskID.isEmpty || question.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || question.count > 4000)
+                        .disabled(assistant.busy || account.context == nil || !consent || taskID.isEmpty || question.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || question.count > 4000)
                         .accessibilityIdentifier("field-assistant-send")
                 }.disabled(assistant.busy)
                 Section {
@@ -127,7 +129,7 @@ struct FieldAssistantView: View {
                 }
             }.navigationTitle("Помощник x0").navigationBarTitleDisplayMode(.inline)
                 .toolbar { ToolbarItem(placement: .confirmationAction) { Button("К работе") { dismiss() } } }
-                .task { if photo != nil { question = "Прочитай видимый текст. Нечитаемые места не дополняй." }; await account.refresh() }
+                .task { if photo != nil { question = "Прочитай видимый текст. Нечитаемые места не дополняй." }; await account.refresh(); if taskID.isEmpty,let tasks=account.context?.tasks,tasks.count==1 {taskID=tasks[0].id} }
                 .sheet(isPresented: $showAccount) { WebsiteAccountView() }
         }
     }

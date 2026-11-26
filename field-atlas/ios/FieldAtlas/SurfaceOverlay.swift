@@ -12,7 +12,7 @@ import FieldCore
     func reset(){root.childNodes.forEach{$0.removeFromParentNode()};meshes=[:];lastMeshTime=0;cursor=0}
     private func material(_ color:UIColor,lines:Bool)->SCNMaterial {
         let m=SCNMaterial();m.lightingModel = .constant;m.diffuse.contents=color
-        m.isDoubleSided=true;m.fillMode=lines ? .lines:.fill;m.writesToDepthBuffer = !lines
+        m.isDoubleSided=true;m.fillMode=lines ? .lines:.fill;m.writesToDepthBuffer = false;m.readsFromDepthBuffer = true;m.blendMode = .alpha
         return m
     }
     /// Real reconstructed triangles only; no artificial room-sized coverage fill.
@@ -30,7 +30,7 @@ import FieldCore
             let source=SCNGeometrySource(data:vertexData,semantic:.vertex,vectorCount:v.count,usesFloatComponents:true,componentsPerVector:3,bytesPerComponent:4,dataOffset:v.offset,dataStride:v.stride)
             let indices=Data(bytes:f.buffer.contents(),count:f.count*f.indexCountPerPrimitive*f.bytesPerIndex)
             let element=SCNGeometryElement(data:indices,primitiveType:.triangles,primitiveCount:f.count,bytesPerIndex:f.bytesPerIndex)
-            let geometry=SCNGeometry(sources:[source],elements:[element]);geometry.materials=[material(UIColor.systemGreen.withAlphaComponent(0.85),lines:true)]
+            let geometry=SCNGeometry(sources:[source],elements:[element]);geometry.materials=[material(UIColor.systemGreen.withAlphaComponent(0.32),lines:false)]
             let node=meshes[anchor.identifier] ?? SCNNode();node.geometry=geometry;node.simdTransform=anchor.transform
             if meshes[anchor.identifier]==nil{meshes[anchor.identifier]=node;root.addChildNode(node)}
         }
@@ -52,9 +52,10 @@ import FieldCore
             }
             var lines=SurfaceHatching.segments(outline:outline,holes:holes)
             for polygon in [outline]+holes {for i in polygon.indices{lines.append([polygon[i],polygon[(i+1)%polygon.count]])}}
-            let vertices=lines.flatMap{$0.map{SCNVector3(Float($0[0]),Float($0[1]),0.008)}}
+            let ribbon=SurfaceHatching.ribbons(lines:lines,width:0.012)
+            let vertices=ribbon.vertices.map{SCNVector3(Float($0[0]),Float($0[1]),0)}
             guard !vertices.isEmpty else{continue}
-            let geometry=SCNGeometry(sources:[SCNGeometrySource(vertices:vertices)],elements:[SCNGeometryElement(indices:(0..<vertices.count).map{UInt32($0)},primitiveType:.line)])
+            let geometry=SCNGeometry(sources:[SCNGeometrySource(vertices:vertices)],elements:[SCNGeometryElement(indices:ribbon.indices,primitiveType:.triangles)])
             let color:UIColor;switch surface.confidence{case .high:color = .systemGreen;default:color = .systemOrange}
             geometry.materials=[material(color,lines:false)]
             let node=SCNNode(geometry:geometry);node.simdTransform=surface.transform;root.addChildNode(node)
@@ -74,9 +75,10 @@ import FieldCore
         backgroundColor = .clear;isOpaque=false;isUserInteractionEnabled=false
         scene=SCNScene();scene?.rootNode.addChildNode(surfaces.root)
         cameraNode.camera=SCNCamera();scene?.rootNode.addChildNode(cameraNode);pointOfView=cameraNode
-        antialiasingMode = .multisampling4X;preferredFramesPerSecond=30
+        antialiasingMode = .multisampling4X;preferredFramesPerSecond=30;rendersContinuously=true;isPlaying=true
     }
     override func didMoveToWindow(){super.didMoveToWindow();ticker?.invalidate();ticker=nil
+        isPlaying=window != nil;rendersContinuously=window != nil
         if window != nil {let link=CADisplayLink(target:self,selector:#selector(updateCamera));link.preferredFrameRateRange=CAFrameRateRange(minimum:15,maximum:30,preferred:30);link.add(to:.main,forMode:.common);ticker=link}
     }
     @objc private func updateCamera(){
@@ -86,7 +88,7 @@ import FieldCore
         cameraNode.camera?.projectionTransform=SCNMatrix4(frame.camera.projectionMatrix(for:orientation,viewportSize:bounds.size,zNear:0.05,zFar:30))
         setNeedsDisplay()
     }
-    func stop(){ticker?.invalidate();ticker=nil}
+    func stop(){ticker?.invalidate();ticker=nil;isPlaying=false;rendersContinuously=false}
 }
 
 struct RoomSurfaceCamera:UIViewRepresentable {

@@ -73,10 +73,10 @@ final class FieldAtlasUITests: XCTestCase {
         tap(app.buttons["map-zoom-out"]);XCTAssertNotEqual(scale.label,original);capture("map-scale")
     }
     func testSimulatorDoesNotPretendToHaveLiDAR(){
-        create("interior","Проверка оборудования");tap(app.buttons["workspace-scan"]);let start=app.buttons["capture-start"];XCTAssertTrue(start.waitForExistence(timeout:10));XCTAssertFalse(start.isEnabled);capture("unsupported-lidar");tap(app.buttons["Закрыть"]);XCTAssertTrue(app.buttons["workspace-add"].waitForExistence(timeout:5))
+        create("interior","Проверка оборудования");tap(app.buttons["workspace-scan"]);XCTAssertTrue(app.staticTexts["capture-unavailable"].waitForExistence(timeout:10));XCTAssertFalse(app.buttons["capture-start"].exists);capture("unsupported-lidar");tap(app.buttons["capture-close"]);XCTAssertTrue(app.buttons["workspace-add"].waitForExistence(timeout:5))
     }
     func testFieldAssistantNeedsAccountAndReturnsToWork(){
-        create("land","Помощник в поле");tap(app.buttons["workspace-tools"]);tap(app.buttons["Помощник x0"])
+        create("land","Помощник в поле");tap(app.buttons["workspace-assistant"])
         XCTAssertTrue(app.navigationBars["Помощник x0"].waitForExistence(timeout:10));capture("field-assistant-account")
         let send=app.buttons["field-assistant-send"]
         for _ in 0..<4{if send.isHittable{break};app.swipeUp()}
@@ -99,5 +99,61 @@ final class FieldAtlasUITests: XCTestCase {
         capture("field-task-completed")
         tap(app.buttons["К работе"]);tap(app.buttons["workspace-objects"])
         XCTAssertTrue(app.buttons.matching(NSPredicate(format:"label CONTAINS %@","Контроль времени")).firstMatch.waitForExistence(timeout:5))
+    }
+    func testCameraToolsLeaveCenterClearInPortraitAndLandscape(){
+        app.terminate();app.launchEnvironment["FIELD_ATLAS_UI_HARNESS"]="camera";app.launch()
+        let ids=["capture-close","capture-torch","capture-coverage","capture-help","capture-pause","room-measure","room-photo","room-more","capture-assistant"]
+        for orientation in [UIDeviceOrientation.portrait,.landscapeLeft] {
+            XCUIDevice.shared.orientation=orientation
+            let landscape=orientation == .landscapeLeft
+            let ready=NSPredicate{_,_ in let r=self.app.windows.firstMatch.frame;return r.width>0 && (r.width>r.height)==landscape}
+            XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:ready,object:nil)],timeout:12),.completed)
+            let window=app.windows.firstMatch.frame
+            let clear=CGRect(x:window.midX-window.width*0.25,y:window.minY+16,width:window.width*0.5,height:window.height-32)
+            for id in ids{let button=app.buttons[id];XCTAssertTrue(button.waitForExistence(timeout:5));XCTAssertTrue(button.isHittable);XCTAssertTrue(window.contains(button.frame));XCTAssertGreaterThanOrEqual(button.frame.width,44);XCTAssertGreaterThanOrEqual(button.frame.height,44);XCTAssertFalse(clear.intersects(button.frame),id)}
+            capture(landscape ? "camera-layout-fixture-landscape":"camera-layout-fixture-portrait")
+        }
+        tap(app.buttons["capture-torch"]);XCTAssertEqual(app.buttons["capture-torch"].value as? String,"Включено")
+        tap(app.buttons["capture-help"]);XCTAssertTrue(app.staticTexts["Это проверка расположения кнопок без камеры и LiDAR."].waitForExistence(timeout:5));tap(app.buttons["К камере"])
+        XCTAssertTrue(app.buttons["capture-torch"].isHittable)
+    }
+    func testCemeteryManualBoundaryRoadAndPathPersist(){
+        create("cemetery","Карта кладбища")
+        for kind in ["boundary","road","path"] {
+            tap(app.buttons["workspace-"+kind]);tap(app.buttons["track-start-manual"])
+            let map=app.otherElements["survey-map"].firstMatch
+            let points=kind=="boundary" ? [CGVector(dx:0.3,dy:0.34),CGVector(dx:0.7,dy:0.34),CGVector(dx:0.7,dy:0.46),CGVector(dx:0.3,dy:0.46)] : [CGVector(dx:0.4,dy:0.35),CGVector(dx:0.6,dy:0.43)]
+            for point in points{map.coordinate(withNormalizedOffset:point).tap()}
+            XCTAssertEqual(app.staticTexts["track-count"].label,"\(points.count) точек")
+            capture("manual-"+kind);tap(app.buttons["track-save"])
+            XCTAssertTrue(app.buttons["workspace-add"].isEnabled)
+        }
+        tap(app.buttons["workspace-objects"])
+        for name in ["Граница 1","Дорога 1","Тропинка 1"]{XCTAssertTrue(app.staticTexts[name].waitForExistence(timeout:5))}
+        capture("cemetery-saved-paths")
+    }
+    func testCemeteryMarkersOpenTheirOwnCards(){
+        create("cemetery","Метки кладбища")
+        for kind in ["entrance","tree","dump","container"] {
+            tap(app.buttons["workspace-tools"])
+            let feature=app.buttons["marker-"+kind]
+            for _ in 0..<6{if feature.isHittable{break};app.swipeUp()}
+            tap(feature)
+            app.otherElements["survey-map"].firstMatch.coordinate(withNormalizedOffset:CGVector(dx:0.5,dy:0.38)).tap()
+            XCTAssertTrue(app.textFields["observation-title"].waitForExistence(timeout:8))
+            XCTAssertFalse((app.textFields["observation-title"].value as? String ?? "").isEmpty)
+            tap(app.buttons["Свернуть"])
+        }
+        tap(app.buttons["workspace-objects"]);capture("cemetery-markers")
+        for title in ["Вход","Дерево","Свалка","Мусорный контейнер"]{XCTAssertTrue(app.buttons.matching(NSPredicate(format:"label CONTAINS %@",title)).firstMatch.exists)}
+    }
+    func testGravePhotoChecklistAndCameraCancelPreserveCard(){
+        create("cemetery","Фото захоронения");tap(app.buttons["workspace-add"]);tap(app.buttons["wizard-next"])
+        for role in ["overview","inscription","portrait"]{let row=app.buttons["photo-role-"+role];for _ in 0..<4{if row.isHittable{break};app.swipeUp()};XCTAssertTrue(row.isHittable)}
+        let overview=app.buttons["photo-role-overview"];for _ in 0..<5{if overview.isHittable{break};app.swipeDown()};tap(overview)
+        // The Simulator must report absence of a camera instead of fabricating a photograph.
+        let alert=app.alerts["Фотография"];if alert.waitForExistence(timeout:8){tap(alert.buttons["Понятно"])}
+        tap(app.buttons["photo-close"]);XCTAssertTrue(app.buttons["photo-role-overview"].waitForExistence(timeout:5));capture("grave-photo-checklist")
+        tap(app.buttons["Свернуть"]);tap(app.buttons["workspace-objects"]);XCTAssertTrue(app.buttons.matching(NSPredicate(format:"label CONTAINS %@","0 фото")).firstMatch.exists)
     }
 }

@@ -12,9 +12,11 @@ import FieldCore
     @Published var message="Осмотрите пол и потолок, затем укажите точку пола"
     @Published var method="manual-corners"
     @Published var stopped=false
+    @Published var torchOn=false
+    func toggleTorch(){do{torchOn=try CaptureLight.toggle()}catch{message=error.localizedDescription}}
     override init(){super.init();view.scene=SCNScene();view.scene.rootNode.addChildNode(overlay);view.session.delegate=self}
     func start(){let config=ARWorldTrackingConfiguration();config.planeDetection=[.horizontal,.vertical];if ARWorldTrackingConfiguration.supportsSceneReconstruction(.meshWithClassification){config.sceneReconstruction = .meshWithClassification};if ARWorldTrackingConfiguration.supportsFrameSemantics(.sceneDepth){config.frameSemantics=[.sceneDepth]};view.session.run(config);stopped=false}
-    func stop(){view.session.pause();stopped=true;message="Сессия остановлена. Сохраните замер или начните новый."}
+    func stop(){do{try CaptureLight.turnOff();torchOn=false}catch{message=error.localizedDescription};view.session.pause();stopped=true;message="Сессия остановлена. Сохраните замер или начните новый."}
     nonisolated func sessionWasInterrupted(_ session:ARSession){Task{@MainActor [weak self] in self?.stop()}}
     nonisolated func session(_ session:ARSession,didFailWithError error:Error){Task{@MainActor [weak self] in self?.stop();self?.message="Камера остановлена. Сохраните имеющиеся точки или закройте замер."}}
     private func hit()->[Double]?{
@@ -54,13 +56,30 @@ struct CeilingCaptureScreen:View {
     let onSave:(CeilingMeasurement)throws->Void
     @StateObject private var controller=CeilingCaptureController()
     @State private var error:String?
-    var body:some View{ZStack(alignment:.bottom){CeilingCamera(controller:controller).ignoresSafeArea();Image(systemName:"plus").font(.title).foregroundStyle(.white).frame(maxHeight:.infinity)
-        VStack(spacing:12){Text(controller.message).font(.callout);HStack{Button("Точка пола"){controller.floorPoint()};Button("Угол потолка"){controller.corner()};Button("Отмена точки"){controller.undo()}}.font(.caption).buttonStyle(.bordered)
-            Button("Предложить распознанный контур"){controller.propose()}.buttonStyle(.bordered)
-            if let result=controller.result,let low=result.heights.min(),let high=result.heights.max(){Text("Над точкой пола: \(low,specifier:"%.2f")–\(high,specifier:"%.2f") м").font(.headline)}
-            HStack{Button("Закрыть"){dismiss()};Spacer();Button("Проверено — сохранить"){if let result=controller.result{do{try onSave(result);dismiss()}catch{self.error=error.localizedDescription}}}.buttonStyle(.borderedProminent).disabled(controller.result==nil)}
-            Text("AR-замер требует контрольного промера. Это отдельная система координат; контур не накладывается на план квартиры без привязки.").font(.caption2)
-        }.padding(16).background(.regularMaterial,in:RoundedRectangle(cornerRadius:18)).padding(12)
-    }.onAppear{controller.start()}.onDisappear{controller.stop()}.onChange(of:phase){_,p in if p != .active{controller.stop()}}.onChange(of:health.stopReason){_,reason in if reason != nil{controller.stop()}}
-    .alert("Замер не сохранён",isPresented:Binding(get:{error != nil},set:{if !$0{error=nil}})){Button("Понятно"){error=nil}}message:{Text(error ?? "")}}
+    @State private var showHelp=false
+    @State private var confirmSave=false
+    var body:some View {
+        ZStack {
+            CeilingCamera(controller:controller).ignoresSafeArea()
+            Image(systemName:"plus").font(.title2).foregroundStyle(.white).shadow(radius:2).allowsHitTesting(false)
+            CaptureHUD {
+                CaptureTool(symbol:"xmark",label:"Закрыть замер потолка",id:"capture-close"){dismiss()}
+                CaptureTool(symbol:controller.torchOn ? "flashlight.on.fill":"flashlight.off.fill",label:"Фонарик",id:"capture-torch",active:controller.torchOn){controller.toggleTorch()}
+                CaptureTool(symbol:"questionmark",label:"Как измерить потолок",id:"capture-help"){showHelp=true}
+            } right: {
+                CaptureTool(symbol:"arrow.down.to.line",label:"Указать точку пола",id:"ceiling-floor",active:controller.floor != nil){controller.floorPoint()}
+                CaptureTool(symbol:"plus",label:"Добавить угол потолка",id:"ceiling-corner"){controller.corner()}.disabled(controller.floor==nil || controller.stopped)
+                CaptureTool(symbol:"arrow.uturn.backward",label:"Убрать последнюю точку",id:"ceiling-undo"){controller.undo()}
+                CaptureTool(symbol:"square.dashed",label:"Предложить распознанный контур",id:"ceiling-propose"){controller.propose();showHelp=true}
+                CaptureTool(symbol:"checkmark",label:"Проверить и сохранить замер",id:"ceiling-save"){confirmSave=true}.disabled(controller.result==nil)
+            }
+        }.statusBarHidden(true).persistentSystemOverlays(.hidden)
+        .onAppear{controller.start()}.onDisappear{controller.stop()}
+        .onChange(of:phase){_,p in if p != .active{controller.stop()}}
+        .onChange(of:health.stopReason){_,reason in if reason != nil{controller.stop()}}
+        .sheet(isPresented:$showHelp){CaptureHelp(title:"Пол и потолок",status:"\(controller.message)\nУглов: \(controller.corners.count)",items:[("arrow.down.to.line","Точка пола","Наведите центр на пол и нажмите стрелку вниз."),("plus","Углы потолка","Наведите центр на каждый угол потолка по порядку и нажимайте плюс."),("square.dashed","Предложить контур","Используется только распознанная поверхность. Проверьте, не закрывает ли контур проёмы."),("checkmark","Проверить и сохранить","Высота рассчитывается над выбранной точкой пола. Для точной работы нужен контрольный промер.")])}
+        .confirmationDialog("Сохранить измерение потолка?",isPresented:$confirmSave,titleVisibility:.visible){Button("Проверено — сохранить"){if let result=controller.result{do{try onSave(result);dismiss()}catch{self.error=error.localizedDescription}}};Button("Вернуться к замеру",role:.cancel){}}message:{Text(summary)}
+        .alert("Замер не сохранён",isPresented:Binding(get:{error != nil},set:{if !$0{error=nil}})){Button("Понятно"){error=nil}}message:{Text(error ?? "")}
+    }
+    private var summary:String{if let result=controller.result,let low=result.heights.min(),let high=result.heights.max(){return String(format:"Высота над точкой пола: %.2f–%.2f м. Углов: %d. Это отдельная система координат; проверьте контур.",low,high,controller.corners.count)};return controller.message}
 }
