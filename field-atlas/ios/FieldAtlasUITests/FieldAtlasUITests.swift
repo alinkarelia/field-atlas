@@ -53,7 +53,9 @@ final class FieldAtlasUITests: XCTestCase {
         let list=app.collectionViews.firstMatch.exists ? app.collectionViews.firstMatch:app.scrollViews.firstMatch
         XCTAssertTrue(list.exists,"A visible list is required for scrolling")
         for _ in 0..<14 {
-            if element.exists && element.isHittable{return}
+            // SwiftUI can report a cell as hittable below a safe-area toolbar.
+            // Scroll until the complete control is inside the list viewport.
+            if element.exists && element.isHittable && list.frame.insetBy(dx:0,dy:8).contains(element.frame){return}
             let above=element.exists && !element.frame.isEmpty && element.frame.midY < list.frame.minY+40
             let start=list.coordinate(withNormalizedOffset:CGVector(dx:0.5,dy:above ? 0.4:0.65))
             let end=list.coordinate(withNormalizedOffset:CGVector(dx:0.5,dy:above ? 0.65:0.4))
@@ -96,7 +98,7 @@ final class FieldAtlasUITests: XCTestCase {
         XCTAssertTrue(identity.waitForExistence(timeout:5));let original=identity.label
         for _ in 0..<4{tap(app.buttons["wizard-next"])}
         let next=app.buttons["cemetery-new-observation"];revealList(next);tap(next)
-        XCTAssertTrue(app.textFields["observation-title"].waitForExistence(timeout:5));XCTAssertEqual(identity.label,original)
+        XCTAssertTrue(app.textFields["observation-title"].waitForExistence(timeout:5));XCTAssertTrue(app.textFields["observation-title"].isHittable);XCTAssertEqual(identity.label,original)
         capture("followup-preserves-object-id");tap(app.buttons["Свернуть"]);tap(app.buttons["workspace-objects"])
         XCTAssertEqual(app.buttons.matching(NSPredicate(format:"label CONTAINS %@","Захоронение ·")).count,2)
     }

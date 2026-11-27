@@ -95,7 +95,7 @@ struct ObservationWizard:View {
                     }}
                 }
                 if !notice.isEmpty{Section{Text(notice).font(.footnote)}}
-            }.scrollDismissesKeyboard(.interactively).navigationTitle(steps[step]).accessibilityIdentifier("observation-editor").navigationBarTitleDisplayMode(.inline)
+            }.id(draft.id).scrollDismissesKeyboard(.interactively).navigationTitle(steps[step]).accessibilityIdentifier("observation-editor").navigationBarTitleDisplayMode(.inline)
             .toolbar{ToolbarItem(placement:.cancellationAction){Button("Свернуть"){if save(){dismiss()}}}}
             .safeAreaInset(edge:.bottom){HStack{if step>0{Button("Назад"){if save(){step-=1}}.buttonStyle(.bordered)};Spacer();Button(nextTitle){if step==4{draft.status=draft.missing.isEmpty ? "complete":"draft";if save(){dismiss()}}else if save(){step+=1}}.buttonStyle(.borderedProminent).accessibilityIdentifier("wizard-next")}.controlSize(.large).padding(.horizontal,16).padding(.vertical,compactLayout ? 8:16).background(.regularMaterial)}
         }
