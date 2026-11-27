@@ -3,6 +3,7 @@ import FieldCore
 
 struct WorkspaceView:View {
     @EnvironmentObject var store:AppStore
+    @EnvironmentObject var maps:MapPackageStore
     @EnvironmentObject var missions:FieldMissionRecorder
     @Environment(\.scenePhase) private var phase
     @Environment(\.verticalSizeClass) private var verticalSizeClass
@@ -20,6 +21,10 @@ struct WorkspaceView:View {
     @State private var showGeo=true
     @StateObject private var territory=TerritoryStore()
     @State private var showTerritory=false
+    @State private var showMaps=false
+    @State private var showGPS=false
+    @State private var mapFocus:GeoOrigin?
+    @State private var mapFocusZoom:Double=10
     @State private var sitePlace:TerritoryPlace?
     @State private var selectedPlace:TerritoryPlace?
     @State private var geoScale="Карта округа"
@@ -44,11 +49,11 @@ struct WorkspaceView:View {
     private func trackTitle(_ kind:String)->String{kind=="boundary" ? "Граница":kind=="road" ? "Дорога":"Тропинка"}
     var body:some View {
         ZStack(alignment:.top) {
-            if showGeo && project.type.outdoor {MapLibrePlan(records:records,origin:store.state.origins[project.id],catalog:territory.catalog,mapURL:territory.mapURL,track:location.segments,currentPosition:location.freshPosition,centerRequest:centerRequest,zoomRequest:geoZoom,fitRequest:geoFit,selectedPlace:selectedPlace,placing:busyMap,onPick:selectGeographic,onSite:{sitePlace=$0},onRecord:{id in editing=objects.first{$0.id==id}},onScale:{if geoScale != $0{geoScale=$0}}).ignoresSafeArea(edges:.bottom)}
+            if showGeo && project.type.outdoor {MapLibrePlan(records:records,origin:store.state.origins[project.id],catalog:territory.catalog,mapURL:territory.mapURL,basemapStyleURL:maps.styleURL,geographicPosition:location.visiblePosition,accuracy:location.accuracy,focus:mapFocus,focusZoom:mapFocusZoom,track:location.segments,currentPosition:location.freshPosition,centerRequest:centerRequest,zoomRequest:geoZoom,fitRequest:geoFit,selectedPlace:selectedPlace,placing:busyMap,onPick:selectGeographic,onSite:{sitePlace=$0},onRecord:{id in editing=objects.first{$0.id==id}},onScale:{if geoScale != $0{geoScale=$0}},onMapError:{maps.mapFailed()},onMapCenter:{maps.updateContext($0)}).ignoresSafeArea(edges:.bottom)}
             else{LocalPlan(records:records,track:location.segments,currentPosition:location.freshPosition,centerRequest:centerRequest,onPick:selectPoint).ignoresSafeArea(edges:.bottom)}
             VStack(spacing:8) {
                 header
-                if !compact{HStack{Spacer();Button{location.locate();centerRequest=UUID();notice=location.message}label:{Image(systemName:"location").frame(width:48,height:48).background(.regularMaterial,in:Circle())}.accessibilityLabel("Моё положение")}.padding(.horizontal,16)}
+                if !compact{HStack{Spacer();Button{mapFocus=nil;maps.updateContext(location.visiblePosition);location.locate();centerRequest=UUID();if location.canOpenSettings{showGPS=true}}label:{Image(systemName:"location").frame(width:48,height:48).background(.regularMaterial,in:Circle())}.accessibilityLabel("Моё положение").accessibilityIdentifier("map-locate")}.padding(.horizontal,16)}
                 if showGeo && project.type.outdoor {geoControls}
                 Spacer(minLength:0)
                 if missions.active{Button("● Записывается: "+(missions.selected?.title ?? "маршрут")){showMissions=true}.font(.footnote).padding(8).background(.regularMaterial,in:Capsule())}
@@ -59,9 +64,9 @@ struct WorkspaceView:View {
                 dockBar
             }
         }
-        .onAppear{territory.load(root:store.root);location.origin=store.state.origins[project.id];if let saved=store.loadTrack(project.id){trackKind=saved.kind;location.restore(saved);if saved.origin==nil && location.origin==nil && !saved.points.isEmpty{showGeo=false}};location.trackChanged={saveTrack()};location.originChanged={origin in do{try store.setOrigin(origin,projectId:project.id)}catch{notice=error.localizedDescription}}}
-        .onDisappear{saveTrack();location.stop()}
-        .onChange(of:phase){_,p in if p == .background,trackKind != nil,!location.manual,!location.paused{location.pause();saveTrack()}}
+        .onAppear{maps.load(root:store.root);territory.load(root:store.root);location.origin=store.state.origins[project.id];if let saved=store.loadTrack(project.id){trackKind=saved.kind;location.restore(saved);if saved.origin==nil && location.origin==nil && !saved.points.isEmpty{showGeo=false}};location.trackChanged={saveTrack()};location.originChanged={origin in do{try store.setOrigin(origin,projectId:project.id)}catch{notice=error.localizedDescription}};if project.type.outdoor{location.locate();maps.updateContext(location.visiblePosition ?? location.origin)}}
+        .onDisappear{saveTrack();location.stop();location.stopLocation()}
+        .onChange(of:phase){_,p in if p == .background{if trackKind != nil,!location.manual,!location.paused{location.pause();saveTrack()};location.stopLocation()}else if p == .active,project.type.outdoor{location.locate()}}
         .onChange(of:location.position){_,_ in if markerGPS,let p=location.freshPosition{saveMarker(p,gps:true)}}
         .alert("В границе есть разрывы GPS",isPresented:$confirmBoundary){Button("Сохранить с пометкой проверки"){finishTrack(acceptGap:true)};Button("Вернуться к обходу",role:.cancel){}}message:{Text("Концы разрывов соединятся прямыми. Проверьте эти участки; точность границы ограничена GPS.")}
         .alert("Отменить текущий обход?",isPresented:$confirmDiscard){Button("Удалить незавершённый обход",role:.destructive){do{try store.clearTrack(project.id);location.stop();location.points=[];location.segments=[];trackKind=nil;notice="Незавершённый обход удалён"}catch{notice=error.localizedDescription}};Button("Продолжить",role:.cancel){}}message:{Text("Сохранённые границы, дороги и карточки останутся.")}
@@ -73,6 +78,8 @@ struct WorkspaceView:View {
         .sheet(isPresented:$showMissions){FieldMissionsView(project:project)}
         .fullScreenCover(isPresented:$showArchive){NavigationStack{ArchiveLinksView(project:project).toolbar{Button("Готово"){showArchive=false}}}}
         .fullScreenCover(isPresented:$showScan){CapturePreparationScreen(project:project)}
+        .sheet(isPresented:$showMaps){MapLibraryView(onSelect:{maps.select($0);mapFocus=$0.center;mapFocusZoom=$0.area>10 ? 6:$0.area>1 ? 9:12;showGeo=true})}
+        .sheet(isPresented:$showGPS){GPSStatusView(location:location)}
         .sheet(isPresented:$showTerritory){TerritoryView(territory:territory,onSelect:{selectedPlace=$0;showGeo=true})}
         .sheet(item:$sitePlace){place in TerritoryPlaceView(place:place,onLocate:{selectedPlace=place;showGeo=true})}
         .sheet(isPresented:$showTools){toolsView}
@@ -81,7 +88,8 @@ struct WorkspaceView:View {
     private var geoControls:some View {
         HStack(alignment:.top){
             if !busyMap {VStack(alignment:.leading,spacing:4){Button{showTerritory=true}label:{Label("Карта и места",systemImage:"map").font(.subheadline).padding(12).background(.regularMaterial,in:Capsule())}.accessibilityIdentifier("workspace-territory")
-                Text(store.state.origins[project.id].map{territory.catalog?.contains($0)==true ? "Карта сохранена · без связи":"За пределами сохранённой карты"} ?? "Обзор округа · GPS ещё не определён").font(.caption2).padding(6).background(.regularMaterial,in:Capsule())
+                Button{showMaps=true}label:{Label(maps.activeMapName+(maps.offlineReady ? " · офлайн":" · сеть"),systemImage:"arrow.down.circle").font(.caption2).padding(8).background(.regularMaterial,in:Capsule())}.accessibilityIdentifier("workspace-map-downloads")
+                Button{showGPS=true}label:{Text(location.message).font(.caption2).padding(8).background(.regularMaterial,in:Capsule())}.accessibilityIdentifier("workspace-gps-status")
                 Text("© OpenStreetMap · ODbL").font(.system(size:10)).padding(4).background(.regularMaterial,in:Capsule())
             }}
             Spacer()
@@ -146,7 +154,7 @@ struct WorkspaceView:View {
                 SurveyAction(title:project.type == .cemetery ? "Создать карточку захоронения":"Создать карточку",detail:"Место → фото → надпись и люди → размеры → проверка",symbol:"plus.rectangle.on.rectangle"){afterTools{createObject()}}
             }
             Section("Метки на плане"){
-                ForEach(SurveyFeature.allCases.filter{project.type == .cemetery || $0 != .anomaly}){feature in
+                ForEach(SurveyFeature.allCases.filter{project.type == .cemetery || ![.anomaly,.sector,.plot].contains($0)}){feature in
                     SurveyAction(title:feature.title,detail:feature == .anomaly ? "Наблюдение, требующее проверки":"Указать на плане или по текущему GPS",symbol:feature.symbol){showTools=false;showGeo=project.type.outdoor;marker=feature;notice=nil}.accessibilityIdentifier("marker-"+feature.rawValue)
                 }
             }
@@ -201,4 +209,3 @@ struct WorkspaceView:View {
         do{try store.save(value);try store.clearTrack(project.id);location.stop();location.points=[];location.segments=[];trackKind=nil;notice=value.title+" сохранена. Можно добавлять карточки, пути и метки."}catch{notice=error.localizedDescription}
     }
 }
-

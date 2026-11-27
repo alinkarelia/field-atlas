@@ -203,7 +203,7 @@ struct SiteTransferSection: View {
     @State private var taskID = ""
     @State private var share = false
     var body: some View {
-        Section("Передать на сайт") {
+        Section("К заданию команды · дополнительно") {
             if let project {
                 if let context = account.context {
                     Picker("Задание", selection: $taskID) {

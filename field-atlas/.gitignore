@@ -11,3 +11,7 @@ node_modules/
 build-device/
 build-simulator/
 artifacts/
+ios/FieldAtlas/world-overview.pmtiles
+ios/FieldAtlas/MapAssets/fonts/
+ios/FieldAtlas/MapAssets/sprites/
+ios/FieldAtlas/MapAssets/resource-manifest.json

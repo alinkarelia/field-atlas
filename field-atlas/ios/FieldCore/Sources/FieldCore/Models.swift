@@ -12,11 +12,13 @@ public enum ProjectKind: String, Codable, CaseIterable, Identifiable {
 }
 public struct GeoOrigin: Codable, Equatable { public var lat: Double; public var lon: Double; public init(lat: Double, lon: Double) { self.lat=lat; self.lon=lon } }
 public struct FieldProject: Codable, Identifiable, Equatable {
+    public var siteID:String?
     public var id: String; public var type: ProjectKind; public var title: String; public var createdAt: Double; public var synthetic: Bool
     public init(title: String, type: ProjectKind) { id=UUID().uuidString; self.title=title; self.type=type; createdAt=Date().timeIntervalSince1970*1000; synthetic=false }
 }
 public struct PersonReading: Codable, Identifiable, Equatable {
     public var id=UUID().uuidString; public var name=""; public var birth=""; public var death=""
+    public var relation:String?;public var datesText:String?;public var evidence:[NameReadingEvidence]?;public var needsReview:Bool?
     public init() {}
 }
 public struct PhotoAttachment: Codable, Identifiable, Equatable {
@@ -33,6 +35,8 @@ public struct Observation: Codable, Identifiable, Equatable {
     public var roomPlan:RoomPlanDocument?;public var roomPlanSourceId:String?;public var roomPlanAssetId:String?;public var roomPlanStructureId:String?;public var roomPlanModelId:String?
     public var fieldMissionID:String?;public var sourceAssetIDs:[String]?
     public var needsReview=false; public var origin: GeoOrigin?; public var serverVersion=0; public var localRevision=0; public var dirty=true
+    public var entityID:String?;public var parentEntityID:String?;public var localNumber:String?
+    public var burialKind:String?;public var totalMinimum:Int?;public var totalMaximum:Int?;public var unidentifiedCount:Int?;public var countSource:String?
     public var createdAt=Date().timeIntervalSince1970*1000
     public init(projectId: String, kind: String) { self.projectId=projectId; self.kind=kind }
     public var missing: [String] {

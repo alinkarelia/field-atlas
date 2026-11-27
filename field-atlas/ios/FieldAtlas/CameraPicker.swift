@@ -18,7 +18,11 @@ struct CameraPicker:UIViewControllerRepresentable {
     }
 }
 enum LocalOCR {
+    struct Line {let text:String;let confidence:Double;let box:[Double]}
     static func read(_ image:CGImage)async throws->String{
+        try await lines(image).map(\.text).joined(separator:"\n")
+    }
+    static func lines(_ image:CGImage)async throws->[Line]{
         try await withCheckedThrowingContinuation{continuation in
             DispatchQueue.global(qos:.userInitiated).async{
                 do{
@@ -27,7 +31,8 @@ enum LocalOCR {
                     guard selected.contains("ru-RU") else{throw NSError(domain:"FieldOCR",code:1,userInfo:[NSLocalizedDescriptionKey:"Кириллица недоступна в локальном OCR этой системы. Используйте x0 или ручное чтение."])}
                     request.recognitionLanguages=selected;request.usesLanguageCorrection=false
                     try VNImageRequestHandler(cgImage:image,options:[:]).perform([request])
-                    continuation.resume(returning:(request.results ?? []).compactMap{$0.topCandidates(1).first?.string}.joined(separator:"\n"))
+                    let rows=(request.results ?? []).compactMap{observation->Line? in guard let value=observation.topCandidates(1).first else{return nil};let b=observation.boundingBox;return Line(text:value.string,confidence:Double(value.confidence),box:[b.minX,b.minY,b.width,b.height])}
+                    continuation.resume(returning:rows)
                 }catch{continuation.resume(throwing:error)}
             }
         }

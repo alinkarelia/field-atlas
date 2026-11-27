@@ -25,13 +25,13 @@ def valid_record(record):
     if not isinstance(record,dict):raise Problem(400,'Некорректная карточка')
     identifier(record.get('id'))
     identifier(record.get('projectId'))
-    if record.get('kind') not in ('grave','boundary','road','path','tree','dump','obstacle','anomaly','entrance','object','room','facade'):
+    if record.get('kind') not in ('grave','boundary','road','path','tree','dump','obstacle','anomaly','entrance','object','room','facade','container','sector','plot'):
         raise Problem(400,'Неизвестный тип объекта')
-    if len(dump(record).encode())>250000:raise Problem(413,'Карточка слишком велика')
+    if len(dump(record).encode())>2*1024*1024:raise Problem(413,'Карточка слишком велика')
     if record.get('kind')=='grave' and record.get('status') not in ('draft','complete'):
         raise Problem(400,'Некорректный статус карточки')
     persons=record.get('persons',[])
-    if not isinstance(persons,list) or len(persons)>100 or any(not isinstance(p,dict) or any(not isinstance(p.get(k,''),str) or len(p.get(k,''))>2000 for k in ('name','birth','death')) for p in persons):
+    if not isinstance(persons,list) or len(persons)>2000 or any(not isinstance(p,dict) or any(not isinstance(p.get(k,''),str) or len(p.get(k,''))>2000 for k in ('name','birth','death')) for p in persons):
         raise Problem(400,'Некорректные сведения о людях')
     for key in ('point',):
         p=record.get(key)

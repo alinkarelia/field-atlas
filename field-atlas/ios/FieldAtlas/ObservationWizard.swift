@@ -23,6 +23,7 @@ struct ObservationWizard:View {
     @State private var showMeasure=false
     @State private var showReading=false
     @State private var showPlan=false
+    @State private var showMemorialNames=false
     @State private var machineText=""
     @State private var machineSourceHash=""
     @State private var notice=""
@@ -48,9 +49,9 @@ struct ObservationWizard:View {
                         if draft.roomPlan != nil{Button("План помещения и размеры"){showPlan=true}}
                         if let p=draft.point{LabeledContent("Место в плане",value:String(format:"%.2f / %.2f м",p[0],p[1]))}
                         Button(locating ? "Остановить поиск GPS":"Определить место по GPS"){
-                            if locating{locating=false;location.stop()}else{
+                            if locating{locating=false;location.stopLocation()}else{
                                 location.origin=store.state.origins[project.id]
-                                location.originChanged={origin in do{try store.setOrigin(origin,projectId:project.id)}catch{notice=error.localizedDescription;locating=false;location.stop()}}
+                                location.originChanged={origin in do{try store.setOrigin(origin,projectId:project.id)}catch{notice=error.localizedDescription;locating=false;location.stopLocation()}}
                                 locating=true;location.locate()
                             }
                         }.accessibilityIdentifier("observation-gps")
@@ -58,7 +59,7 @@ struct ObservationWizard:View {
                         if let accuracy=draft.locationAccuracy{Text("Погрешность GPS: ±\(Int(accuracy)) м. Проверьте место на плане.").font(.caption).foregroundStyle(.secondary)}
                         Button("Указать на плане"){if save(){onPick(draft)}}
                     }header:{if !compactLayout{Text("Объект")}}
-                    if isGrave{Section{Text("Карточка № \(draft.id.prefix(8)). Имя можно добавить позже. Сначала отметьте место; на следующем шаге снимите общий вид и надпись.").font(.footnote)}}
+                    if project.type == .cemetery{CemeteryMetadataSection(draft:$draft,project:project)}
                 }
                 if step==1{Section("Фотографии этой карточки"){Text("Каждый снимок сохраняется отдельно. Можно добавить несколько ракурсов и открыть любой снимок для просмотра.").font(.footnote).foregroundStyle(.secondary);photoRow("Общий вид",role:"overview");photoRow(isGrave ? "Плита или табличка":"Деталь",role:isGrave ? "inscription":"detail");if isGrave{photoRow("Портрет на памятнике",role:"portrait");Toggle("Плиты или надписи нет",isOn:$draft.noInscription)}}}
                 if step==2{
@@ -67,7 +68,12 @@ struct ObservationWizard:View {
                         if isGrave{Toggle("Нужно уточнить чтение",isOn:$draft.unreadable);Button("Распознать на устройстве"){Task{await readLocally()}};Button("Прочитать фото надписи с x0"){guard save() else{return};assistantRequest=AssistantRequest(photo:draft.photos.last(where:{$0.role=="inscription"}))}.disabled(!draft.photos.contains(where:{$0.role=="inscription"}))}
                         Button("Спросить x0 по работе"){assistantRequest=AssistantRequest(photo:nil)}
                     }
-                    if isGrave{Section("Люди, указанные на памятнике"){ForEach($draft.persons){$person in VStack(alignment:.leading,spacing:10){TextField("Имя",text:$person.name);TextField("Рождение — как на плите",text:$person.birth);TextField("Смерть — как на плите",text:$person.death);Button("Убрать человека из карточки",role:.destructive){draft.persons.removeAll{$0.id==person.id}}}.padding(.vertical,6)};Button("Добавить человека"){draft.persons.append(PersonReading())}}}
+                    if isGrave{Section("Имена на памятнике · \(draft.persons.count)"){
+                        Button("Считать список имён с фотографий"){showMemorialNames=true}.disabled(!draft.photos.contains{$0.role=="inscription"}).accessibilityIdentifier("memorial-names-open")
+                        Text("Можно обработать несколько фрагментов. Предложения сверяются с исходными фотографиями перед добавлением.").font(.caption).foregroundStyle(.secondary)
+                        ForEach($draft.persons){$person in CemeteryPersonEditor(person:$person,remove:{draft.persons.removeAll{$0.id==person.id}})}
+                        Button("Добавить имя вручную"){var p=PersonReading();p.relation="inscription";p.needsReview=true;draft.persons.append(p)}.disabled(draft.persons.count>=2000)
+                    }}
                 }
                 if step==3{
                     Section(isGrave ? "Участок по ограде":"Размеры"){
@@ -80,7 +86,7 @@ struct ObservationWizard:View {
                     Section("Комментарии"){TextEditor(text:$draft.comments).frame(minHeight:100).accessibilityLabel("Комментарии")}
                 }
                 if step==4{
-                    Section("Собрано"){LabeledContent("Фотографии",value:String(draft.photos.count));LabeledContent("Место",value:draft.point==nil ? "Не указано":"На плане");if isGrave{LabeledContent("Люди",value:String(draft.persons.count))};if let area=draft.measuredArea ?? rectangleArea{LabeledContent("Площадь",value:String(format:"%.2f м²",area))}}
+                    Section("Собрано"){LabeledContent("Фотографии",value:String(draft.photos.count));LabeledContent("Место",value:draft.point==nil ? "Не указано":"На плане");if isGrave{LabeledContent("Записей имён",value:String(draft.persons.count));LabeledContent("Непроверенных чтений",value:String(draft.persons.filter{$0.needsReview != false}.count))};if let area=draft.measuredArea ?? rectangleArea{LabeledContent("Площадь",value:String(format:"%.2f м²",area))}}
                     if !draft.missing.isEmpty{Section("Можно дополнить позже"){ForEach(draft.missing,id:\.self){Text($0).foregroundStyle(.orange)}}}
                     Section{Text("Машинное чтение остаётся предложением. Исходные снимки и неполные даты сохраняются.").font(.footnote)}
                 }
@@ -94,10 +100,11 @@ struct ObservationWizard:View {
             if locating,let point=location.freshPosition{
                 draft.point=point;draft.origin=location.origin;draft.locationAccuracy=location.accuracy;draft.locationMethod="gps"
                 draft.needsReview=location.accuracy.map{$0>5} ?? true
-                locating=false;location.stop();_=save()
+                locating=false;location.stopLocation();_=save()
             }
         }
-        .onDisappear{location.stop();locating=false}
+        .onDisappear{location.stopLocation();locating=false}
+        .sheet(isPresented:$showMemorialNames){MemorialNamesView(photos:draft.photos.filter{$0.role=="inscription"},existing:draft.persons,onAdd:{people in draft.persons.append(contentsOf:people);draft.needsReview=true;_=save()})}
         .fullScreenCover(isPresented:$showPlan){if let doc=draft.roomPlan{NativeRoomPlanReview(document:doc,onLevelChange:{id,level in var next=draft;guard let i=next.roomPlan?.rooms.firstIndex(where:{$0.id==id}) else{return};next.roomPlan?.rooms[i].level=level;try store.save(next);draft=next},project:project,onCeilingChange:{id,value in try store.save(draft);let room=try store.attachCeiling(value,roomId:id,projectId:project.id);if let saved=store.records(project.id).first(where:{$0.id==draft.id}){draft=saved};return room})}}
         .fullScreenCover(item:$captureRequest){request in PhotoCaptureScreen(title:request.title,onCancel:{captureRequest=nil},onSave:{data in try savePhotoData(data,role:request.role);captureRequest=nil})}
         .photosPicker(isPresented:$showLibrary,selection:$librarySelection,matching:.images)
@@ -133,6 +140,7 @@ struct ObservationWizard:View {
     }
     private var rectangleArea:Double?{guard let l=draft.measureLength,let w=draft.measureWidth,l>0,w>0 else{return nil};return l*w}
     @discardableResult private func save()->Bool{
+        if let problem=draft.cemeteryValidationError{notice=problem;return false}
         if [draft.measureLength,draft.measureWidth].compactMap({$0}).contains(where:{!$0.isFinite || $0<=0 || $0>100000}){notice="Размер должен быть положительным числом в метрах.";return false}
         do{try store.save(draft);return true}catch{notice="Не удалось сохранить: \(error.localizedDescription)";return false}}
     private func photoRow(_ label:String,role:String)->some View {

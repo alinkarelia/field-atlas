@@ -20,6 +20,7 @@ struct AtlasState: Codable {
 @MainActor final class AppStore: ObservableObject {
     @Published private(set) var state=AtlasState()
     @Published var error: String?
+    @Published private(set) var identityCodes:[String:FieldIdentityCodes]=[:]
     private var readOnly=false
     let root: URL
     let encoder: JSONEncoder = { let e=JSONEncoder();e.outputFormatting=[.sortedKeys];return e }()
@@ -37,6 +38,11 @@ struct AtlasState: Codable {
                 guard loaded.schemaVersion==1 else { throw CocoaError(.coderReadCorrupt) };state=loaded
             }
         } catch { readOnly=true;self.error="Не удалось открыть локальные данные. Исходные файлы сохранены: \(error.localizedDescription)" }
+        identityCodes=(try? JSONDecoder().decode([String:FieldIdentityCodes].self,from:Data(contentsOf:root.appendingPathComponent("identity-codes.json")))) ?? [:]
+    }
+    func saveIdentityCodes(_ codes:FieldIdentityCodes,projectID:String)throws{
+        var next=identityCodes;next[projectID]=codes
+        try encoder.encode(next).write(to:root.appendingPathComponent("identity-codes.json"),options:[.atomic,.completeFileProtectionUntilFirstUserAuthentication]);identityCodes=next
     }
     private func persist(_ next: AtlasState) throws {
         guard !readOnly else { throw CocoaError(.fileWriteUnknown) }
@@ -55,7 +61,8 @@ struct AtlasState: Codable {
     func saveAll(_ records:[Observation]) throws {
         var next=state;var changed=false
         for record in records{
-            guard let project=state.projects.first(where:{$0.id==record.projectId}),record.kind != "grave" || project.type == .cemetery,record.roomPlan == nil || project.type == .interior && record.kind=="room",try encoder.encode(record).count<=250000 else { throw CocoaError(.validationMissingMandatoryProperty) }
+            guard let project=state.projects.first(where:{$0.id==record.projectId}),!["grave","plot","sector"].contains(record.kind) || project.type == .cemetery,record.roomPlan == nil || project.type == .interior && record.kind=="room",try encoder.encode(record).count<=2*1024*1024 else { throw CocoaError(.validationMissingMandatoryProperty) }
+            if let problem=record.cemeteryValidationError{throw SiteTransferError.message(problem)}
             var copy=record;let old=next.records.first(where:{$0.id==record.id})
             if let old,old.projectId != record.projectId {throw CocoaError(.validationMissingMandatoryProperty)}
             if let old{var comparable=record;comparable.serverVersion=old.serverVersion;comparable.localRevision=old.localRevision;comparable.dirty=old.dirty;if comparable==old{continue}}
@@ -64,7 +71,7 @@ struct AtlasState: Codable {
             next.outbox.removeAll{$0.record.id==copy.id && $0.attemptBase==nil && $0.state=="pending"}
             next.outbox.append(Mutation(record:copy));changed=true
         }
-        if changed{try persist(next)}
+        if changed{if let problem=CemeteryHierarchy.validationError(next.records){throw SiteTransferError.message(problem)};try persist(next)}
     }
     func attachCeiling(_ value:CeilingMeasurement,roomId:String,projectId:String)throws->MeasuredRoom{
         guard value.valid,let original=records(projectId).compactMap({$0.roomPlan?.rooms.first(where:{$0.id==roomId})}).first else{throw CocoaError(.validationMissingMandatoryProperty)}

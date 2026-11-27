@@ -76,6 +76,9 @@ jobs:
         run: swift test --package-path ios/FieldCore
       - name: Install project generator
         run: brew install xcodegen
+      - name: Prepare verified offline fonts and world overview
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: python3 ios/fetch-map-resources.py
       - name: Generate project
         working-directory: ${{ env.PROJECT_DIR }}/ios
         run: xcodegen generate

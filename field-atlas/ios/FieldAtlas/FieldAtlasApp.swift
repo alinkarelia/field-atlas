@@ -8,16 +8,18 @@ enum Palette {
 }
 @main struct FieldAtlasApp:App {
     @StateObject private var store=AppStore()
+    @StateObject private var maps=MapPackageStore()
     @StateObject private var sync=SyncClient()
     @StateObject private var account=WebsiteAccount()
     @StateObject private var siteTransfer=SiteTransfer()
+    @StateObject private var personalTransfer=PersonalFieldTransfer()
     @StateObject private var workLocation=WebsiteWorkLocation()
     @StateObject private var missions=FieldMissionRecorder()
     @Environment(\.scenePhase) private var phase
-    var body:some Scene{WindowGroup{launchContent.environmentObject(store).environmentObject(sync).environmentObject(account).environmentObject(siteTransfer).environmentObject(workLocation).environmentObject(missions).tint(Palette.green).preferredColorScheme(.light)
-        .onAppear{missions.configure(store)}
-        .onChange(of:phase){_,value in if value == .background{workLocation.stop(reason:"background");siteTransfer.cancel()}}
-        .onChange(of:account.hasSavedLogin){_,value in if !value{workLocation.stop(reason:"logout");siteTransfer.cancel()}}
+    var body:some Scene{WindowGroup{launchContent.environmentObject(store).environmentObject(sync).environmentObject(account).environmentObject(siteTransfer).environmentObject(personalTransfer).environmentObject(workLocation).environmentObject(missions).environmentObject(maps).tint(Palette.green).preferredColorScheme(.light)
+        .onAppear{missions.configure(store);maps.load(root:store.root)}
+        .onChange(of:phase){_,value in if value == .background{workLocation.stop(reason:"background");siteTransfer.cancel();personalTransfer.cancel()}}
+        .onChange(of:account.hasSavedLogin){_,value in if !value{workLocation.stop(reason:"logout");siteTransfer.cancel();personalTransfer.cancel()}}
     }}
     @ViewBuilder private var launchContent:some View {
         #if DEBUG
@@ -34,6 +36,7 @@ struct ProjectHome:View {
     @State private var title=""
     @State private var showTransfer=false
     @State private var showAccount=false
+    @State private var showMaps=false
     var body:some View {
         Group{
             if let selected{WorkspaceView(project:selected,onBack:{self.selected=nil})}
@@ -41,7 +44,8 @@ struct ProjectHome:View {
                 NavigationStack{
                     ScrollView{
                         VStack(alignment:.leading,spacing:24){
-                            VStack(alignment:.leading,spacing:10){Text("ВАШИ ПОЛЕВЫЕ ИССЛЕДОВАНИЯ").font(.caption.weight(.semibold)).tracking(1).foregroundStyle(.secondary);Text("Каждое место.\nВ своей системе.").font(.system(size:34,weight:.semibold,design:.rounded));Text("Выберите тип проекта. Съёмки, карточки и инструменты будут соответствовать вашей задаче.").foregroundStyle(.secondary)}
+                            Button{showMaps=true}label:{HStack(spacing:16){Image(systemName:"map.fill").font(.largeTitle);VStack(alignment:.leading,spacing:6){Text("Карты и территории").font(.title2.weight(.semibold));Text("Найти место · скачать город или область").font(.subheadline)};Spacer();Image(systemName:"chevron.right")}.foregroundStyle(.white).padding(22).frame(maxWidth:.infinity,alignment:.leading).background(Palette.green,in:RoundedRectangle(cornerRadius:22))}.buttonStyle(.plain).accessibilityIdentifier("home-maps")
+                            Text("Новый проект").font(.title2.weight(.semibold))
                             LazyVGrid(columns:[GridItem(.adaptive(minimum:155),spacing:12)],spacing:12){ForEach(ProjectKind.allCases){kind in
                                 Button{title="";creating=kind}label:{VStack(alignment:.leading,spacing:20){Image(systemName:kind.symbol).font(.title2);VStack(alignment:.leading,spacing:6){Text(kind.title).font(.headline);Text(kind.subtitle).font(.caption).foregroundStyle(.secondary)}}.frame(maxWidth:.infinity,minHeight:150,alignment:.leading).padding(18).background(.white,in:RoundedRectangle(cornerRadius:18)).overlay(RoundedRectangle(cornerRadius:18).stroke(.gray.opacity(0.18)))}.buttonStyle(.plain).accessibilityIdentifier("project-kind-"+kind.rawValue)
                             }}
@@ -60,6 +64,7 @@ struct ProjectHome:View {
         .sheet(item:$creating){kind in NavigationStack{Form{Section(kind.title){TextField("Название проекта",text:$title).accessibilityIdentifier("project-title");Text(kind.subtitle).foregroundStyle(.secondary)};Section{Text("Материалы этого проекта будут храниться отдельно.").font(.footnote)}}.navigationTitle("Новый проект").toolbar{ToolbarItem(placement:.cancellationAction){Button("Отмена"){creating=nil}};ToolbarItem(placement:.confirmationAction){Button("Создать"){do{let p=FieldProject(title:title.trimmingCharacters(in:.whitespacesAndNewlines),type:kind);try store.addProject(p);selected=p;creating=nil}catch{store.error=error.localizedDescription}}.disabled(title.trimmingCharacters(in:.whitespacesAndNewlines).isEmpty).accessibilityIdentifier("project-create")}}}}
         .sheet(isPresented:$showTransfer){TransferView(project:nil)}
         .sheet(isPresented:$showAccount){WebsiteAccountView()}
+        .fullScreenCover(isPresented:$showMaps){MapLibraryView()}
         .alert("Не удалось выполнить операцию",isPresented:Binding(get:{store.error != nil},set:{if !$0{store.error=nil}})){Button("Понятно"){store.error=nil}}message:{Text(store.error ?? "")}
     }
 }
@@ -75,6 +80,7 @@ struct TransferView:View {
         NavigationStack{Form{
             Section("Семейный архив"){Button("Учётная запись сайта"){showAccount=true}}
             WebsiteWorkLocationSection()
+            PersonalFieldTransferSection(project:project)
             SiteTransferSection(project:project)
             Section("Локальная песочница · дополнительно"){TextField("https://…",text:$serverURL).textInputAutocapitalization(.never).autocorrectionDisabled().keyboardType(.URL);Text("Для разработки и испытаний собственного сервера. Передача на сайт находится выше и не требует ввода адреса.").font(.footnote)}
             Section("На устройстве"){LabeledContent("Изменений карточек",value:String(store.state.outbox.count));LabeledContent("Файлов к отправке",value:String(store.state.assets.filter{!$0.uploaded}.count));Text(sync.message).font(.footnote);if sync.busy{ProgressView(value:sync.progress)}}

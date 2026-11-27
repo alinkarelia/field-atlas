@@ -66,4 +66,3 @@ struct TerritoryPlaceView:View {
         }.navigationTitle("Место в атласе").navigationBarTitleDisplayMode(.inline).toolbar{Button("Закрыть"){dismiss()}}}
     }
 }
-

@@ -18,7 +18,12 @@ targets:
   FieldAtlas:
     type: application
     platform: iOS
-    sources: [FieldAtlas]
+    sources:
+      - path: FieldAtlas
+        excludes: [MapAssets]
+      - path: FieldAtlas/MapAssets
+        type: folder
+        buildPhase: resources
     dependencies:
       - package: MapLibre
       - package: FieldCore
@@ -26,14 +31,16 @@ targets:
       path: FieldAtlas/Info.plist
       properties:
         CFBundleDisplayName: Полевой атлас
-        CFBundleShortVersionString: '0.6.1'
-        CFBundleVersion: '18'
+        CFBundleShortVersionString: '0.7.0'
+        CFBundleVersion: '19'
         CFBundleURLTypes:
           - CFBundleURLName: ru.archiverf.fieldatlas.oauth
             CFBundleURLSchemes: [archiverf-atlas]
         NSMotionUsageDescription: Барометр предлагает смену этажа. Номер этажа всегда подтверждается вручную.
         NSCameraUsageDescription: Камера нужна для съёмки объектов, надписей и LiDAR.
         NSLocationWhenInUseUsageDescription: Координаты нужны для записи границ, дорожек и положения объектов.
+        NSLocationTemporaryUsageDescriptionDictionary:
+          FieldSurvey: Точное положение нужно для записи границ участка и размещения полевых объектов.
         UIBackgroundModes: [location]
         NSPhotoLibraryUsageDescription: Выберите фотографию для карточки объекта.
         NSLocalNetworkUsageDescription: Подключение к локальному серверу для передачи материалов.
@@ -78,4 +85,3 @@ schemes:
       targets:
         - FieldAtlasTests
         - FieldAtlasUITests
-

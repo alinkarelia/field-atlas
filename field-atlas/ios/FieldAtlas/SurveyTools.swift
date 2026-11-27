@@ -1,10 +1,10 @@
 import SwiftUI
 
 enum SurveyFeature:String,CaseIterable,Identifiable {
-    case entrance,tree,dump,container,obstacle,anomaly
+    case entrance,tree,dump,container,obstacle,anomaly,sector,plot
     var id:String{rawValue}
-    var title:String{switch self{case .entrance:return "Вход";case .tree:return "Дерево";case .dump:return "Свалка";case .container:return "Мусорный контейнер";case .obstacle:return "Препятствие";case .anomaly:return "Углубление / возможное захоронение"}}
-    var symbol:String{switch self{case .entrance:return "door.left.hand.open";case .tree:return "tree.fill";case .dump:return "exclamationmark.triangle.fill";case .container:return "trash.fill";case .obstacle:return "hand.raised.fill";case .anomaly:return "questionmark.diamond.fill"}}
+    var title:String{switch self{case .entrance:return "Вход";case .tree:return "Дерево";case .dump:return "Свалка";case .container:return "Мусорный контейнер";case .obstacle:return "Препятствие";case .anomaly:return "Углубление / возможное захоронение";case .sector:return "Сектор кладбища";case .plot:return "Участок захоронений"}}
+    var symbol:String{switch self{case .entrance:return "door.left.hand.open";case .tree:return "tree.fill";case .dump:return "exclamationmark.triangle.fill";case .container:return "trash.fill";case .obstacle:return "hand.raised.fill";case .anomaly:return "questionmark.diamond.fill";case .sector:return "square.grid.2x2";case .plot:return "square.dashed"}}
 }
 
 struct SurveyAction:View {

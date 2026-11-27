@@ -63,6 +63,22 @@ final class FieldAtlasUITests: XCTestCase {
     private func create(_ kind:String,_ title:String){
         let kindButton=app.buttons["project-kind-"+kind];revealProject(kindButton);tap(kindButton);let field=app.textFields["project-title"];tap(field);field.typeText(title);tap(app.buttons["project-create"]);XCTAssertTrue(app.buttons["workspace-add"].waitForExistence(timeout:10))
     }
+    func testRegionalMapsAreAvailableBeforeCreatingAProject(){
+        tap(app.buttons["home-maps"]);let search=app.searchFields.firstMatch;tap(search);search.typeText("Карелия")
+        XCTAssertTrue(app.buttons["map-preview-karelia"].waitForExistence(timeout:10));XCTAssertTrue(app.buttons["map-download-karelia"].exists);capture("regional-map-catalog-karelia")
+    }
+    func testApproximateGPSInPetrozavodskIsShownWithoutSurveyOrigin(){
+        app.terminate();app.launchEnvironment["FIELD_ATLAS_TEST_LOCATION"]="61.79,34.35,80";app.launch();create("cemetery","Петрозаводск GPS")
+        tap(app.buttons["workspace-gps-status"]);XCTAssertTrue(app.staticTexts["gps-status"].waitForExistence(timeout:5));XCTAssertTrue(app.staticTexts["gps-status"].label.contains("80"));capture("approximate-gps-petrozavodsk");tap(app.buttons["Готово"])
+    }
+    func testRealCityDownloadSurvivesRelaunchAndOpensOffline(){
+        tap(app.buttons["home-maps"]);let search=app.searchFields.firstMatch;tap(search);search.typeText("Петрозаводск");tap(app.buttons["map-download-petrozavodsk"])
+        let done=app.staticTexts.matching(NSPredicate(format:"label CONTAINS %@","Доступна без интернета")).firstMatch
+        XCTAssertTrue(done.waitForExistence(timeout:120));capture("city-map-downloaded")
+        app.terminate();app.launchEnvironment["FIELD_ATLAS_TEST_OFFLINE"]="1";app.launch();tap(app.buttons["home-maps"]);tap(app.searchFields.firstMatch);app.searchFields.firstMatch.typeText("Петрозаводск")
+        XCTAssertTrue(done.waitForExistence(timeout:20));tap(app.buttons["map-preview-petrozavodsk"])
+        XCTAssertTrue(app.staticTexts["Эта карта доступна без интернета"].waitForExistence(timeout:10));capture("petrozavodsk-offline-local-map")
+    }
     func testFourProjectModesAndReturnNavigation(){
         for kind in ["interior","exterior","land","cemetery"]{
             create(kind,"Проверка "+kind);capture("workspace-"+kind);tap(app.buttons["workspace-add"]);XCTAssertTrue(app.textFields["observation-title"].waitForExistence(timeout:10));capture("card-"+kind);tap(app.buttons["Свернуть"]);tap(app.buttons["К проектам"])
@@ -219,4 +235,3 @@ final class FieldAtlasUITests: XCTestCase {
         capture("shared-territory-offline")
     }
 }
-
