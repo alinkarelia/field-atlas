@@ -6,6 +6,7 @@ struct MemorialNamesView:View {
     @EnvironmentObject var store:AppStore
     @Environment(\.dismiss) private var dismiss
     let photos:[PhotoAttachment];let existing:[PersonReading];let onAdd:([PersonReading])->Void
+    var capacity:Int=2000
     @State private var selected=Set<String>()
     @State private var candidates:[Candidate]=[]
     @State private var skipped:[NameReadingEvidence]=[]
@@ -39,7 +40,7 @@ struct MemorialNamesView:View {
         }}
         if !skipped.isEmpty{Section{DisclosureGroup("Неразобранные строки: \(skipped.count)"){ForEach(Array(skipped.enumerated()),id:\.offset){_,row in Button{source=SourcePreview(evidence:row)}label:{Text(row.text).font(.footnote).foregroundStyle(.primary)}}}}}
     }.navigationTitle("Имена с памятника").navigationBarTitleDisplayMode(.inline).toolbar{Button("Закрыть"){job?.cancel();dismiss()}}
-        .safeAreaInset(edge:.bottom){if !candidates.isEmpty{VStack{if existing.count+chosen.count>2000{Text("Выбрано больше 2 000 имён для одной карточки. Снимите часть отметок и сохраните остальные в следующей карточке этого объекта.").font(.caption)};Button("Добавить \(chosen.count) черновиков"){onAdd(chosen.map(\.person));dismiss()}.buttonStyle(.borderedProminent).disabled(chosen.isEmpty || busy || existing.count+chosen.count>2000).accessibilityIdentifier("memorial-import")}.padding().frame(maxWidth:.infinity).background(.regularMaterial)}}
+        .safeAreaInset(edge:.bottom){if !candidates.isEmpty{VStack{if chosen.count>capacity{Text("В этой карточке осталось мест для \(capacity) имён. Снимите часть отметок; остальные можно добавить в продолжение карточки того же объекта.").font(.caption)};Button("Добавить \(chosen.count) черновиков"){onAdd(chosen.map(\.person));dismiss()}.buttonStyle(.borderedProminent).disabled(chosen.isEmpty || busy || chosen.count>capacity).accessibilityIdentifier("memorial-import")}.padding().frame(maxWidth:.infinity).background(.regularMaterial)}}
     }.onAppear{if selected.isEmpty{selected=Set(photos.prefix(12).map(\.id))}}.onDisappear{job?.cancel()}
         .sheet(item:$source){value in NavigationStack{ScrollView{VStack(alignment:.leading,spacing:16){
             if let file=store.assetURL(value.evidence.photoID),let image=UIImage(contentsOfFile:file.path){Image(uiImage:image).resizable().scaledToFit().overlay{GeometryReader{proxy in let b=value.evidence.box;if b.count==4{Rectangle().stroke(.orange,lineWidth:3).frame(width:b[2]*proxy.size.width,height:b[3]*proxy.size.height).position(x:(b[0]+b[2]/2)*proxy.size.width,y:(1-b[1]-b[3]/2)*proxy.size.height)}}}}

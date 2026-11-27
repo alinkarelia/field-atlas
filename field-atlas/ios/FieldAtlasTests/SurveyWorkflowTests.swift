@@ -33,7 +33,7 @@ import FieldCore
         XCTAssertEqual(recorder.segments.count,2)
     }
     func testRequiredMarkerKindsHaveDistinctStableIdentifiers(){
-        XCTAssertEqual(Set(SurveyFeature.allCases.map(\.rawValue)),Set(["entrance","tree","dump","container","obstacle","anomaly"]))
+        XCTAssertEqual(Set(SurveyFeature.allCases.map(\.rawValue)),Set(["sector","plot","entrance","tree","dump","container","obstacle","anomaly"]))
         XCTAssertEqual(Set(SurveyFeature.allCases.map(\.symbol)).count,SurveyFeature.allCases.count)
     }
     func testUnanchoredDrawingCannotBecomeGeographicAfterLaterGPSFix(){

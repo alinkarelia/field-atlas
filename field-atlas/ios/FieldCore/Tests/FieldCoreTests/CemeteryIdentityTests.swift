@@ -42,8 +42,10 @@ final class CemeteryIdentityTests:XCTestCase {
         grave.parentEntityID=grave.physicalID;XCTAssertNotNil(grave.cemeteryValidationError)
     }
     func testNewObservationCanRetainPhysicalObjectWithoutReusingCardID()throws{
-        let original=Observation(projectId:"a",kind:"grave");var later=Observation(projectId:"a",kind:"grave");later.entityID=original.physicalID
+        var original=Observation(projectId:"a",kind:"grave");original.point=[1,2];original.persons=[PersonReading()];original.photos=[PhotoAttachment(id:"test",role:"inscription",sha256:"a",name:"test.jpg")]
+        let later=original.followupObservation()
         XCTAssertNotEqual(original.id,later.id);XCTAssertEqual(original.physicalID,later.physicalID)
+        XCTAssertTrue(later.persons.isEmpty);XCTAssertTrue(later.photos.isEmpty);XCTAssertTrue(later.needsReview);XCTAssertEqual(later.point,[1,2]);XCTAssertEqual(later.locationMethod,"previous_observation")
         XCTAssertEqual(try JSONDecoder().decode(Observation.self,from:JSONEncoder().encode(later)).physicalID,original.physicalID)
     }
 }

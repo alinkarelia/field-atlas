@@ -16,6 +16,13 @@ public struct NameReadingEvidence:Codable,Equatable {
 }
 public extension Observation {
     var physicalID:String{entityID ?? id}
+    func followupObservation()->Observation{
+        var next=Observation(projectId:projectId,kind:kind);next.entityID=physicalID;next.parentEntityID=parentEntityID;next.localNumber=localNumber;next.title=title
+        next.burialKind=burialKind;next.totalMinimum=totalMinimum;next.totalMaximum=totalMaximum;next.unidentifiedCount=unidentifiedCount;next.countSource=countSource
+        next.point=point;next.origin=origin;next.locationMethod="previous_observation";next.locationAccuracy=locationAccuracy;next.needsReview=true
+        next.comments="Продолжение карточки "+id+". Место и сведения перенесены из предыдущего обследования и требуют проверки."
+        return next
+    }
     var cemeteryValidationError:String?{
         if persons.count>2000{return "В одной карточке допускается до 2 000 записей имён. Сохраните следующую часть отдельной карточкой того же объекта."}
         if let parentEntityID,parentEntityID==physicalID{return "Объект не может быть собственным участком."}

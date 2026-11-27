@@ -5,6 +5,16 @@ import FieldCore
 @testable import FieldAtlas
 
 final class MapLocationTests:XCTestCase {
+    @MainActor func testOfflineStyleRefreshesBundleURLsAfterAppUpdate()throws{
+        let root=FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at:root,withIntermediateDirectories:true);defer{try? FileManager.default.removeItem(at:root)}
+        let first=MapPackageStore(monitorNetwork:false,online:false);first.load(root:root)
+        let style=try XCTUnwrap(first.styleURL);var prior=try XCTUnwrap(try JSONSerialization.jsonObject(with:Data(contentsOf:style)) as? [String:Any])
+        prior["glyphs"]="file:///removed-old-app-bundle/fonts/{fontstack}/{range}.pbf";try JSONSerialization.data(withJSONObject:prior).write(to:style,options:.atomic)
+        let updated=MapPackageStore(monitorNetwork:false,online:false);updated.load(root:root)
+        let value=try XCTUnwrap(try JSONSerialization.jsonObject(with:Data(contentsOf:XCTUnwrap(updated.styleURL))) as? [String:Any]);let fonts=try XCTUnwrap(value["glyphs"] as? String)
+        XCTAssertFalse(fonts.contains("removed-old-app-bundle"));XCTAssertTrue(fonts.hasPrefix(Bundle.main.resourceURL!.absoluteString));XCTAssertTrue(updated.offlineReady)
+    }
     @MainActor func testCoarseGPSIsVisibleWithoutCreatingSurveyOrigin(){
         let recorder=LocationRecorder();recorder.receive(CLLocation(coordinate:CLLocationCoordinate2D(latitude:61.79,longitude:34.35),altitude:0,horizontalAccuracy:80,verticalAccuracy:100,timestamp:Date()))
         XCTAssertEqual(recorder.visiblePosition,GeoOrigin(lat:61.79,lon:34.35));XCTAssertNil(recorder.origin);XCTAssertNil(recorder.freshPosition);XCTAssertTrue(recorder.message.contains("80"))

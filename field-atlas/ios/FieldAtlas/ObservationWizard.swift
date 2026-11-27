@@ -89,6 +89,10 @@ struct ObservationWizard:View {
                     Section("Собрано"){LabeledContent("Фотографии",value:String(draft.photos.count));LabeledContent("Место",value:draft.point==nil ? "Не указано":"На плане");if isGrave{LabeledContent("Записей имён",value:String(draft.persons.count));LabeledContent("Непроверенных чтений",value:String(draft.persons.filter{$0.needsReview != false}.count))};if let area=draft.measuredArea ?? rectangleArea{LabeledContent("Площадь",value:String(format:"%.2f м²",area))}}
                     if !draft.missing.isEmpty{Section("Можно дополнить позже"){ForEach(draft.missing,id:\.self){Text($0).foregroundStyle(.orange)}}}
                     Section{Text("Машинное чтение остаётся предложением. Исходные снимки и неполные даты сохраняются.").font(.footnote)}
+                    if isGrave{Section("Продолжить работу с этим объектом"){
+                        Button("Новое обследование / продолжение списка"){newObservation()}.accessibilityIdentifier("cemetery-new-observation")
+                        Text("Сохранит текущую карточку и откроет новую для того же захоронения. Номер объекта сохранится; фотографии и новые имена добавляются отдельно.").font(.footnote).foregroundStyle(.secondary)
+                    }}
                 }
                 if !notice.isEmpty{Section{Text(notice).font(.footnote)}}
             }.scrollDismissesKeyboard(.interactively).navigationTitle(steps[step]).accessibilityIdentifier("observation-editor").navigationBarTitleDisplayMode(.inline)
@@ -104,7 +108,7 @@ struct ObservationWizard:View {
             }
         }
         .onDisappear{location.stopLocation();locating=false}
-        .sheet(isPresented:$showMemorialNames){MemorialNamesView(photos:draft.photos.filter{$0.role=="inscription"},existing:draft.persons,onAdd:{people in draft.persons.append(contentsOf:people);draft.needsReview=true;_=save()})}
+        .sheet(isPresented:$showMemorialNames){MemorialNamesView(photos:draft.photos.filter{$0.role=="inscription"},existing:draft.persons+store.records(project.id).filter{$0.physicalID==draft.physicalID && $0.id != draft.id}.flatMap(\.persons),onAdd:{people in draft.persons.append(contentsOf:people);draft.needsReview=true;_=save()},capacity:2000-draft.persons.count)}
         .fullScreenCover(isPresented:$showPlan){if let doc=draft.roomPlan{NativeRoomPlanReview(document:doc,onLevelChange:{id,level in var next=draft;guard let i=next.roomPlan?.rooms.firstIndex(where:{$0.id==id}) else{return};next.roomPlan?.rooms[i].level=level;try store.save(next);draft=next},project:project,onCeilingChange:{id,value in try store.save(draft);let room=try store.attachCeiling(value,roomId:id,projectId:project.id);if let saved=store.records(project.id).first(where:{$0.id==draft.id}){draft=saved};return room})}}
         .fullScreenCover(item:$captureRequest){request in PhotoCaptureScreen(title:request.title,onCancel:{captureRequest=nil},onSave:{data in try savePhotoData(data,role:request.role);captureRequest=nil})}
         .photosPicker(isPresented:$showLibrary,selection:$librarySelection,matching:.images)
@@ -139,6 +143,11 @@ struct ObservationWizard:View {
         })}
     }
     private var rectangleArea:Double?{guard let l=draft.measureLength,let w=draft.measureWidth,l>0,w>0 else{return nil};return l*w}
+    private func newObservation(){
+        guard save()else{return}
+        let next=draft.followupObservation()
+        do{try store.save(next);draft=next;step=0;notice="Открыта новая карточка того же объекта. Проверьте перенесённое место и сведения; добавьте фотографии этого обследования."}catch{notice=error.localizedDescription}
+    }
     @discardableResult private func save()->Bool{
         if let problem=draft.cemeteryValidationError{notice=problem;return false}
         if [draft.measureLength,draft.measureWidth].compactMap({$0}).contains(where:{!$0.isFinite || $0<=0 || $0>100000}){notice="Размер должен быть положительным числом в метрах.";return false}

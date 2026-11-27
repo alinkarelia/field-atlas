@@ -97,7 +97,9 @@ import FieldCore
             guard let fonts=Bundle.main.resourceURL?.appendingPathComponent("MapAssets/fonts",isDirectory:true),let sprites=Bundle.main.resourceURL?.appendingPathComponent("MapAssets/sprites/light") else{throw MapPackageError.invalidCatalog}
             style["glyphs"]=fonts.absoluteString+"/{fontstack}/{range}.pbf";style["sprite"]=sprites.absoluteString
             let target=root.appendingPathComponent("style-"+TerritoryStore.digest(Data(key.utf8))+".json")
-            if !FileManager.default.fileExists(atPath:target.path){try JSONSerialization.data(withJSONObject:style).write(to:target,options:.atomic)}
+            // App updates can change the bundle directory. Rewrite local resource
+            // URLs so a downloaded map never retains a removed bundle's fonts.
+            try JSONSerialization.data(withJSONObject:style).write(to:target,options:.atomic)
             sourceKey=key;styleURL=target
         }catch{message=error.localizedDescription}
     }

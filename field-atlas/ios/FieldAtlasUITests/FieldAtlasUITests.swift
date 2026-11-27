@@ -90,6 +90,16 @@ final class FieldAtlasUITests: XCTestCase {
         capture("review-portrait");tap(app.buttons["wizard-next"]);XCTAssertTrue(app.buttons["workspace-objects"].waitForExistence(timeout:10));app.terminate();app.launch()
         let savedProject=app.buttons.matching(NSPredicate(format:"label CONTAINS %@","Сохранность карточки")).firstMatch;revealProject(savedProject);tap(savedProject);tap(app.buttons["workspace-objects"]);tap(app.buttons.matching(NSPredicate(format:"label CONTAINS %@","Плита 18?4")).firstMatch);XCTAssertEqual(app.textFields["observation-title"].value as? String,"Плита 18?4");capture("restored-card")
     }
+    func testFollowupCardKeepsObjectIdentityAndDoesNotReplacePreviousCard(){
+        create("cemetery","Повторное обследование");tap(app.buttons["workspace-add"])
+        let identity=app.staticTexts.matching(NSPredicate(format:"label BEGINSWITH %@","Постоянный ID:")).firstMatch
+        XCTAssertTrue(identity.waitForExistence(timeout:5));let original=identity.label
+        for _ in 0..<4{tap(app.buttons["wizard-next"])}
+        let next=app.buttons["cemetery-new-observation"];revealList(next);tap(next)
+        XCTAssertTrue(app.textFields["observation-title"].waitForExistence(timeout:5));XCTAssertEqual(identity.label,original)
+        capture("followup-preserves-object-id");tap(app.buttons["Свернуть"]);tap(app.buttons["workspace-objects"])
+        XCTAssertEqual(app.buttons.matching(NSPredicate(format:"label CONTAINS %@","Захоронение ·")).count,2)
+    }
     func testRotationPreservesEditableCardAndBottomAction(){
         create("land","Поворот экрана");tap(app.buttons["workspace-add"]);let title=app.textFields["observation-title"];tap(title);title.typeText("Длинное название участка")
         XCUIDevice.shared.orientation = .landscapeLeft
