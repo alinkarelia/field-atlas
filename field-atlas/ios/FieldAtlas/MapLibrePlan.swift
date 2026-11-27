@@ -9,6 +9,7 @@ struct MapLibrePlan:UIViewRepresentable {
     var basemapStyleURL:URL?=nil
     var geographicPosition:GeoOrigin?=nil;var accuracy:Double?=nil
     var focus:GeoOrigin?=nil;var focusZoom:Double=12
+    var focusBounds:[Double]?=nil
     var track:[[[Double]]]=[];var currentPosition:[Double]?=nil
     var centerRequest=UUID();var zoomRequest=0;var fitRequest=UUID()
     var selectedPlace:TerritoryPlace?=nil
@@ -41,7 +42,7 @@ struct MapLibrePlan:UIViewRepresentable {
         if old.zoomRequest != zoomRequest{map.setZoomLevel(map.zoomLevel+Double(zoomRequest-old.zoomRequest),animated:false)}
         if old.centerRequest != centerRequest{c.awaitingPosition=true}
         if c.awaitingPosition,let p=geographicPosition{map.setCenter(CLLocationCoordinate2D(latitude:p.lat,longitude:p.lon),zoomLevel:(accuracy ?? 0)>1000 ? 10:(accuracy ?? 0)>100 ? 14:17,animated:false);c.awaitingPosition=false;c.initializedCamera=true}
-        if old.focus != focus,let p=focus{map.setCenter(CLLocationCoordinate2D(latitude:p.lat,longitude:p.lon),zoomLevel:focusZoom,animated:false);c.initializedCamera=true;c.awaitingPosition=false}
+        if old.focus != focus || old.focusBounds != focusBounds,let p=focus{if !c.fitCoverage(map){map.setCenter(CLLocationCoordinate2D(latitude:p.lat,longitude:p.lon),zoomLevel:focusZoom,animated:false)};c.initializedCamera=true;c.awaitingPosition=false}
         if old.selectedPlace?.id != selectedPlace?.id,let p=selectedPlace?.point{map.setCenter(CLLocationCoordinate2D(latitude:p[0],longitude:p[1]),zoomLevel:16,animated:false)}
         c.refresh(map)
     }
@@ -67,6 +68,7 @@ struct MapLibrePlan:UIViewRepresentable {
             initializedCamera=true;fit(map)
         }
         func fit(_ map:MLNMapView){
+            if fitCoverage(map){return}
             let coordinates=parent.records.flatMap{record in ([record.point].compactMap{$0}+record.points+record.segments.flatMap{$0}).compactMap{SurveyGeography.coordinate($0,origin:record.origin)}} + parent.track.flatMap{$0}.compactMap{SurveyGeography.coordinate($0,origin:parent.origin)}
             if let first=coordinates.first {
                 let latitudes=coordinates.map(\.latitude),longitudes=coordinates.map(\.longitude)
@@ -77,6 +79,13 @@ struct MapLibrePlan:UIViewRepresentable {
             else if let origin=parent.origin{map.setCenter(CLLocationCoordinate2D(latitude:origin.lat,longitude:origin.lon),zoomLevel:17,animated:false)}
             else if let p=parent.focus ?? parent.geographicPosition{map.setCenter(CLLocationCoordinate2D(latitude:p.lat,longitude:p.lon),zoomLevel:parent.focus != nil ? parent.focusZoom:16,animated:false)}
             else{map.setCenter(CLLocationCoordinate2D(latitude:62,longitude:35),zoomLevel:3,animated:false)}
+        }
+        @discardableResult func fitCoverage(_ map:MLNMapView)->Bool{
+            guard let b=parent.focusBounds,b.count==4,b.allSatisfy(\.isFinite),b[0]<b[2],b[1]<b[3] else{return false}
+            let sw=CLLocationCoordinate2D(latitude:b[1],longitude:b[0]),ne=CLLocationCoordinate2D(latitude:b[3],longitude:b[2])
+            guard CLLocationCoordinate2DIsValid(sw),CLLocationCoordinate2DIsValid(ne)else{return false}
+            map.setVisibleCoordinateBounds(MLNCoordinateBounds(sw:sw,ne:ne),edgePadding:UIEdgeInsets(top:min(130,map.bounds.height*0.15),left:32,bottom:min(230,map.bounds.height*0.3),right:64),animated:false)
+            return true
         }
         func mapView(_ mapView:MLNMapView,didFinishLoading style:MLNStyle){installBase(mapView);fitInitial(mapView);refresh(mapView)}
         func mapViewDidFailLoadingMap(_ mapView:MLNMapView,withError error:Error){DispatchQueue.main.async{[weak self] in self?.parent.onMapError?()}}

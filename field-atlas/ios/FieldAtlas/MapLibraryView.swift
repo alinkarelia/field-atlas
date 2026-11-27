@@ -66,7 +66,7 @@ private struct MapPreviewView:View {
     @Environment(\.dismiss) private var dismiss
     let package:MapPackage;let select:()->Void
     var body:some View{NavigationStack{ZStack(alignment:.bottom){
-        MapLibrePlan(records:[],origin:nil,basemapStyleURL:maps.styleURL,focus:package.center,focusZoom:package.area>10 ? 6:package.area>1 ? 9:12,onMapError:{maps.mapFailed()}).ignoresSafeArea(edges:.bottom)
+        MapLibrePlan(records:[],origin:nil,basemapStyleURL:maps.styleURL,focus:package.center,focusBounds:package.bounds,onMapError:{maps.mapFailed()}).ignoresSafeArea(edges:.bottom)
         VStack(spacing:10){Text(maps.offlineReady && maps.activeMapName==package.title ? "Эта карта доступна без интернета":"Для подробной карты без сети нажмите «Скачать» в каталоге.").font(.footnote);Button("Открыть эту территорию",action:select).buttonStyle(.borderedProminent);Text("© OpenStreetMap · Protomaps").font(.caption2)}.padding().frame(maxWidth:.infinity).background(.regularMaterial)
     }.navigationTitle(package.title).navigationBarTitleDisplayMode(.inline).toolbar{Button("Назад"){dismiss()}}.onAppear{maps.select(package)}}}
 }

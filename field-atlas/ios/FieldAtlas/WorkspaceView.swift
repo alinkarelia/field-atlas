@@ -25,6 +25,7 @@ struct WorkspaceView:View {
     @State private var showGPS=false
     @State private var mapFocus:GeoOrigin?
     @State private var mapFocusZoom:Double=10
+    @State private var mapFocusBounds:[Double]?
     @State private var sitePlace:TerritoryPlace?
     @State private var selectedPlace:TerritoryPlace?
     @State private var geoScale="Карта округа"
@@ -49,11 +50,11 @@ struct WorkspaceView:View {
     private func trackTitle(_ kind:String)->String{kind=="boundary" ? "Граница":kind=="road" ? "Дорога":"Тропинка"}
     var body:some View {
         ZStack(alignment:.top) {
-            if showGeo && project.type.outdoor {MapLibrePlan(records:records,origin:store.state.origins[project.id],catalog:territory.catalog,mapURL:territory.mapURL,basemapStyleURL:maps.styleURL,geographicPosition:location.visiblePosition,accuracy:location.accuracy,focus:mapFocus,focusZoom:mapFocusZoom,track:location.segments,currentPosition:location.freshPosition,centerRequest:centerRequest,zoomRequest:geoZoom,fitRequest:geoFit,selectedPlace:selectedPlace,placing:busyMap,onPick:selectGeographic,onSite:{sitePlace=$0},onRecord:{id in editing=objects.first{$0.id==id}},onScale:{if geoScale != $0{geoScale=$0}},onMapError:{maps.mapFailed()},onMapCenter:{maps.updateContext($0)}).ignoresSafeArea(edges:.bottom)}
+            if showGeo && project.type.outdoor {MapLibrePlan(records:records,origin:store.state.origins[project.id],catalog:territory.catalog,mapURL:territory.mapURL,basemapStyleURL:maps.styleURL,geographicPosition:location.visiblePosition,accuracy:location.accuracy,focus:mapFocus,focusZoom:mapFocusZoom,focusBounds:mapFocusBounds,track:location.segments,currentPosition:location.freshPosition,centerRequest:centerRequest,zoomRequest:geoZoom,fitRequest:geoFit,selectedPlace:selectedPlace,placing:busyMap,onPick:selectGeographic,onSite:{sitePlace=$0},onRecord:{id in editing=objects.first{$0.id==id}},onScale:{if geoScale != $0{geoScale=$0}},onMapError:{maps.mapFailed()},onMapCenter:{maps.updateContext($0)}).ignoresSafeArea(edges:.bottom)}
             else{LocalPlan(records:records,track:location.segments,currentPosition:location.freshPosition,centerRequest:centerRequest,onPick:selectPoint).ignoresSafeArea(edges:.bottom)}
             VStack(spacing:8) {
                 header
-                if !compact{HStack{Spacer();Button{mapFocus=nil;maps.updateContext(location.visiblePosition);location.locate();centerRequest=UUID();if location.canOpenSettings{showGPS=true}}label:{Image(systemName:"location").frame(width:48,height:48).background(.regularMaterial,in:Circle())}.accessibilityLabel("Моё положение").accessibilityIdentifier("map-locate")}.padding(.horizontal,16)}
+                if !compact{HStack{Spacer();Button{mapFocus=nil;mapFocusBounds=nil;maps.updateContext(location.visiblePosition);location.locate();centerRequest=UUID();if location.canOpenSettings{showGPS=true}}label:{Image(systemName:"location").frame(width:48,height:48).background(.regularMaterial,in:Circle())}.accessibilityLabel("Моё положение").accessibilityIdentifier("map-locate")}.padding(.horizontal,16)}
                 if showGeo && project.type.outdoor {geoControls}
                 Spacer(minLength:0)
                 if missions.active{Button("● Записывается: "+(missions.selected?.title ?? "маршрут")){showMissions=true}.font(.footnote).padding(8).background(.regularMaterial,in:Capsule())}
@@ -78,7 +79,7 @@ struct WorkspaceView:View {
         .sheet(isPresented:$showMissions){FieldMissionsView(project:project)}
         .fullScreenCover(isPresented:$showArchive){NavigationStack{ArchiveLinksView(project:project).toolbar{Button("Готово"){showArchive=false}}}}
         .fullScreenCover(isPresented:$showScan){CapturePreparationScreen(project:project)}
-        .sheet(isPresented:$showMaps){MapLibraryView(onSelect:{maps.select($0);mapFocus=$0.center;mapFocusZoom=$0.area>10 ? 6:$0.area>1 ? 9:12;showGeo=true})}
+        .sheet(isPresented:$showMaps){MapLibraryView(onSelect:{maps.select($0);mapFocus=$0.center;mapFocusBounds=$0.bounds;mapFocusZoom=$0.area>10 ? 6:$0.area>1 ? 9:12;showGeo=true})}
         .sheet(isPresented:$showGPS){GPSStatusView(location:location)}
         .sheet(isPresented:$showTerritory){TerritoryView(territory:territory,onSelect:{selectedPlace=$0;showGeo=true})}
         .sheet(item:$sitePlace){place in TerritoryPlaceView(place:place,onLocate:{selectedPlace=place;showGeo=true})}
@@ -93,7 +94,7 @@ struct WorkspaceView:View {
                 Text("© OpenStreetMap · ODbL").font(.system(size:10)).padding(4).background(.regularMaterial,in:Capsule())
             }}
             Spacer()
-            VStack(spacing:4){Button{geoZoom+=1}label:{Image(systemName:"plus").frame(width:44,height:44)}.accessibilityLabel("Приблизить").accessibilityIdentifier("map-zoom-in");Button{geoZoom-=1}label:{Image(systemName:"minus").frame(width:44,height:44)}.accessibilityLabel("Отдалить").accessibilityIdentifier("map-zoom-out");Button{geoFit=UUID()}label:{Image(systemName:"arrow.up.left.and.arrow.down.right").frame(width:44,height:44)}.accessibilityLabel("Показать весь план").accessibilityIdentifier("map-fit")}.background(.regularMaterial,in:Capsule())
+            VStack(spacing:4){Button{geoZoom+=1}label:{Image(systemName:"plus").frame(width:44,height:44)}.accessibilityLabel("Приблизить").accessibilityIdentifier("map-zoom-in");Button{geoZoom-=1}label:{Image(systemName:"minus").frame(width:44,height:44)}.accessibilityLabel("Отдалить").accessibilityIdentifier("map-zoom-out");Button{mapFocusBounds=nil;mapFocus=nil;geoFit=UUID()}label:{Image(systemName:"arrow.up.left.and.arrow.down.right").frame(width:44,height:44)}.accessibilityLabel("Показать весь план").accessibilityIdentifier("map-fit")}.background(.regularMaterial,in:Capsule())
         }.overlay(alignment:.bottomLeading){if !busyMap{Text(geoScale).font(.caption2).padding(6).background(.regularMaterial,in:Capsule()).offset(y:28).allowsHitTesting(false).accessibilityIdentifier("map-scale")}}.padding(.horizontal,16)
     }
     private func selectGeographic(_ coordinate:[Double]){
